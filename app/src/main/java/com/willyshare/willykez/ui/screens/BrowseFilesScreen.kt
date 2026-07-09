@@ -305,7 +305,7 @@ private fun StoragePermissionRationale(onRequest: () -> Unit) {
         Text("Full storage access needed", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            "To browse every folder on internal storage and your SD card, Sparks needs the \"All files access\" permission. You'll be taken to a Settings screen to turn it on.",
+            "To browse every folder on internal storage and your SD card, Sharing Plus needs the \"All files access\" permission. You'll be taken to a Settings screen to turn it on.",
             fontSize = 13.sp,
             color = SleekOnSurfaceVariant,
             textAlign = TextAlign.Center

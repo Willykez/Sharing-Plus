@@ -92,7 +92,7 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            InPageHeader(title = "Sparks", subtitle = deviceName)
+            InPageHeader(title = "Sharing Plus", subtitle = deviceName)
 
             LazyColumn(
                 modifier = Modifier

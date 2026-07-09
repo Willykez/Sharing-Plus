@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +36,7 @@ import com.willyshare.willykez.ui.screens.DashboardScreen
 import com.willyshare.willykez.ui.screens.HistoryScreen
 import com.willyshare.willykez.ui.screens.MyQrScreen
 import com.willyshare.willykez.ui.screens.OnboardingScreen
+import com.willyshare.willykez.ui.screens.PinConfirmationOverlay
 import com.willyshare.willykez.ui.screens.ReceiveScreen
 import com.willyshare.willykez.ui.screens.ScanQrScreen
 import com.willyshare.willykez.ui.screens.SelectFilesScreen
@@ -101,7 +104,7 @@ class MainActivity : ComponentActivity() {
           }
         }
 
-        // Another app shared files into Sparks ("Share to" from Gallery/Files/etc.):
+        // Another app shared files into Sharing Plus ("Share to" from Gallery/Files/etc.):
         // stash them and jump straight to picking who to send them to.
         LaunchedEffect(incomingShare) {
           val shareIntent = incomingShare ?: return@LaunchedEffect
@@ -140,50 +143,57 @@ class MainActivity : ComponentActivity() {
         val exitFadeSpec: androidx.compose.animation.core.FiniteAnimationSpec<Float> =
           reducedMotionAwareSpec(tween(200))
 
-        AnimatedContent(
-          targetState = currentScreen,
-          transitionSpec = {
-            when {
-              reducedMotion ->
-                EnterTransition.None togetherWith ExitTransition.None
-              isRootSwitch ->
-                fadeIn(rootFadeInSpec) togetherWith fadeOut(rootFadeOutSpec)
-              isPush ->
-                // Push: new screen slides in from right, old screen exits to the left
-                (slideInHorizontally(slideSpec) { it } + fadeIn(enterFadeSpec)) togetherWith
-                  (slideOutHorizontally(slideSpec) { -it / 3 } + fadeOut(exitFadeSpec))
-              else ->
-                // Pop: new screen slides in from left, old screen exits to the right
-                (slideInHorizontally(slideSpec) { -it } + fadeIn(enterFadeSpec)) togetherWith
-                  (slideOutHorizontally(slideSpec) { it / 3 } + fadeOut(exitFadeSpec))
+        Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
+          AnimatedContent(
+            targetState = currentScreen,
+            transitionSpec = {
+              when {
+                reducedMotion ->
+                  EnterTransition.None togetherWith ExitTransition.None
+                isRootSwitch ->
+                  fadeIn(rootFadeInSpec) togetherWith fadeOut(rootFadeOutSpec)
+                isPush ->
+                  // Push: new screen slides in from right, old screen exits to the left
+                  (slideInHorizontally(slideSpec) { it } + fadeIn(enterFadeSpec)) togetherWith
+                    (slideOutHorizontally(slideSpec) { -it / 3 } + fadeOut(exitFadeSpec))
+                else ->
+                  // Pop: new screen slides in from left, old screen exits to the right
+                  (slideInHorizontally(slideSpec) { -it } + fadeIn(enterFadeSpec)) togetherWith
+                    (slideOutHorizontally(slideSpec) { it / 3 } + fadeOut(exitFadeSpec))
+              }
+            },
+            label = "screen_transition",
+          ) { screen ->
+            when (screen) {
+              "splash" -> SplashScreen(
+                onFinish = {
+                  val nextRoute = if (prefs.getBoolean(KEY_ONBOARDED, false)) "dashboard" else "onboarding"
+                  navigate(nextRoute)
+                }
+              )
+              "onboarding" -> OnboardingScreen(
+                onGetStarted = {
+                  prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
+                  navigate("dashboard")
+                }
+              )
+              "dashboard" -> DashboardScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "send" -> SendScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "receive" -> ReceiveScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "my_qr" -> MyQrScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "scan_qr" -> ScanQrScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "select" -> SelectFilesScreen(viewModel = viewModel, onNavigate = ::navigate, onGoBack = ::goBack)
+              "browse" -> com.willyshare.willykez.ui.screens.BrowseFilesScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "transfer" -> TransferringScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "history" -> HistoryScreen(viewModel = viewModel, onNavigate = ::navigate)
+              "settings" -> SettingsScreen(viewModel = viewModel, onNavigate = ::navigate)
             }
-          },
-          label = "screen_transition",
-        ) { screen ->
-          when (screen) {
-            "splash" -> SplashScreen(
-              onFinish = {
-                val nextRoute = if (prefs.getBoolean(KEY_ONBOARDED, false)) "dashboard" else "onboarding"
-                navigate(nextRoute)
-              }
-            )
-            "onboarding" -> OnboardingScreen(
-              onGetStarted = {
-                prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
-                navigate("dashboard")
-              }
-            )
-            "dashboard" -> DashboardScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "send" -> SendScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "receive" -> ReceiveScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "my_qr" -> MyQrScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "scan_qr" -> ScanQrScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "select" -> SelectFilesScreen(viewModel = viewModel, onNavigate = ::navigate, onGoBack = ::goBack)
-            "browse" -> com.willyshare.willykez.ui.screens.BrowseFilesScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "transfer" -> TransferringScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "history" -> HistoryScreen(viewModel = viewModel, onNavigate = ::navigate)
-            "settings" -> SettingsScreen(viewModel = viewModel, onNavigate = ::navigate)
           }
+
+          // Stage 4: mounted once, globally, above every screen - shows itself only when
+          // PulseViewModel.pinConfirmation is non-null, on whichever device (dialer or
+          // acceptor) currently has a match-code awaiting a human's yes/no.
+          PinConfirmationOverlay(viewModel = viewModel)
         }
       }
     }

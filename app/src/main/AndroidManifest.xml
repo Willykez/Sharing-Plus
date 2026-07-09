@@ -69,7 +69,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Lets other apps (Gallery, Files, etc.) "Share to" Sparks directly -->
+            <!-- Lets other apps (Gallery, Files, etc.) "Share to" Sharing Plus directly -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

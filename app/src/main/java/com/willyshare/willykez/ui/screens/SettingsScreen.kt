@@ -284,7 +284,7 @@ fun SettingsScreen(
                     GroupedListItem(position = GroupPosition.ONLY) {
                         SettingsRow(
                             icon = Icons.Default.Info,
-                            title = "Sparks",
+                            title = "Sharing Plus",
                             subtitle = "Direct offline file sharing over Wi-Fi Direct"
                         )
                     }

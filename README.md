@@ -1,255 +1,132 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-FF6B35?style=for-the-badge&labelColor=0D0D1A"/>
+  <img src="https://img.shields.io/badge/Version-2.0.0-FF6B35?style=for-the-badge&labelColor=0D0D1A"/>
   <img src="https://img.shields.io/badge/Android-7.0%2B-4CAF50?style=for-the-badge&logo=android&logoColor=white"/>
   <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white"/>
   <img src="https://img.shields.io/badge/Transfer-Wi--Fi%20Direct-42A5F5?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/Ads-None-9C27B0?style=for-the-badge"/>
 </p>
 
-<h1 align="center">⚡ Sparks</h1>
+<h1 align="center">⚡ Sharing Plus</h1>
 <p align="center"><strong>Blazing-fast peer-to-peer file sharing over Wi-Fi Direct</strong></p>
 <p align="center">
-  No internet · No cloud · No pairing codes — just scan a QR and send
+  No internet · No cloud · No account — scan a code, confirm it matches, and send
 </p>
 
 ---
 
 ## 📱 Overview
 
-**Sparks** is a fully offline Android file-transfer app built on **Wi-Fi Direct** (WifiP2pManager) and **QR pairing**. Two devices connect directly — no router, no internet, no account. Files are transferred over a raw NIO socket at full Wi-Fi speeds. Every transfer is logged locally in a Room database.
+**Sharing Plus** is a fully offline Android file-transfer app built on **Wi-Fi Direct** (`WifiP2pManager`) and **QR pairing**. Two devices connect directly — no router, no internet, no account — and files move over a raw NIO socket at full Wi-Fi speeds, with an optional forced-5GHz fast path. Every transfer is logged locally in a Room database.
 
-Built from the ground up with **Jetpack Compose**, a custom Material 3 `SleekPalette` design system, and a clean single-`ViewModel` architecture.
+Built with **Jetpack Compose**, a custom Material 3 `SleekPalette` design system (aurora gradients, glassmorphism cards, holographic borders), and a single-`ViewModel` architecture.
+
+| | |
+|---|---|
+| **Package** | `com.willyshare.willykez` |
+| **Min SDK** | 24 (Android 7.0) |
+| **Language** | Kotlin, Jetpack Compose |
+| **Storage** | Room (transfer history), SAF (custom receive folder) |
 
 ---
 
 ## ✨ Features
 
 ### 🔗 Connectivity
-- **Wi-Fi Direct peer discovery** — real `WifiP2pManager` broadcasts, no simulated devices
-- **QR Code pairing** — receiver displays a `SPARKS|name|ip|port` QR; sender scans it with CameraX + ZXing
-- **Auto IP handshake** — group-owner IP resolved from `WifiP2pInfo` after connection
-- Dual connection path: Wi-Fi Direct auto-connect **or** manual QR scan
+- **Wi-Fi Direct peer discovery** — real `WifiP2pManager` broadcasts, connect from a live nearby-devices list
+- **QR pairing with a pull model** — the device with files ready to send shows a QR ("I'm discoverable"); the receiving device scans it and *pulls* the cart. This mirrors how people actually think about sharing: the person offering files is the one who gets found.
+- **High-speed mode** — forces the Wi-Fi Direct group onto 5GHz (`GROUP_OWNER_BAND_5GHZ`) when the chipset supports it, with a clean fallback to auto-band on chipsets/OEMs that reject a forced band. Toggling it mid-session correctly tears down and re-forms the group instead of silently failing.
+- **Match-code confirmation** — after connecting, before a single byte of file data moves, both devices show the same 4-digit code and both people must tap Confirm. Closes the "auto-trust whoever you land on" gap that QR/peer-discovery flows otherwise have. Auto-declines after 30 seconds of silence.
 
 ### 📤 Sending
-- Pick any files from device storage — Photos, Videos, Documents, APKs, Audio, Archives
-- Grouped file browser (`GroupedList`) with category tabs and multi-select
-- Per-file progress rows with speed (MB/s) and live byte count
-- Overall transfer progress aggregated across all files in one batch
-- Parallel multi-file send via `coroutineScope { async { ... } }` per file
+- Pick files from device storage — Photos, Videos, Documents, APKs, Audio, Archives
+- Grouped file browser with category tabs, multi-select, and thumbnail previews (including a play-badge overlay on video thumbnails)
+- Cart is decoupled from connection: pick files first or connect first, in either order — the cart survives navigating around the app
+- Files shared in from other apps ("Share to Sharing Plus") land straight in the cart
+- Per-file progress rows with live speed (MB/s) and byte count; parallel multi-stream sending for large batches
 
 ### 📥 Receiving
-- One-tap `ReceiveScreen` — starts a background NIO `ServerSocketChannel`
-- Shows sender device name, connection status, and per-file progress
-- Files saved to app-specific `Downloads/Sparks/` directory
-- `senderConnected` state keeps UI in sync with socket lifecycle
+- Always-on background listener — no need to sit on the Receive screen for another device to find you
+- Choose a custom save folder via Storage Access Framework, or fall back to the app's own directory
+- Foreground service + notification keep receiving alive even when the app is backgrounded
+- Every finished transfer (sent or received) is written to a local, offline history log
 
-### 📋 History
-- Room database (`PulseDatabase`) stores every completed or failed transfer
-- `TransferEntity` fields: `fileName`, `category`, `sizeBytes`, `timestamp`, `deviceName`, `isSend`, `status`, `savedPath`
-- Filter by Sent / Received; category icons per file type
-- Real-time `StateFlow` updates via `PulseDao.getAllTransfers()`
-
-### 🔐 QR Pairing
-- `MyQrScreen` generates a ZXing QR bitmap from `QrPairing.buildPayload()`
-- `ScanQrScreen` uses CameraX `ImageAnalysis` to decode live frames
-- Payload format: `SPARKS|<deviceName>|<ip>|<port>` — parsed and validated before connecting
-
-### 🎨 UI & Design
-- **Jetpack Compose** throughout — zero XML activities
-- **`SleekPalette`** custom M3 colour system — dark + light with `CompositionLocal` delivery
-- **`SleekBottomNav`** — pill-shaped floating nav bar with shadow + border
-- **`GlassCard`** — semi-transparent surface with backdrop blur feel
-- **`AuroraBackground`** — animated gradient canvas backdrop on key screens
-- **`RadarPulseRing`** — animated sonar-ring send/receive indicators
-- **`SleekTopBar`** with back navigation and screen title
-- `AnimatedContent` slide + fade transitions between screens
-- Custom `PulseIcons` vector icon set
-
-### 🗄️ Data & State
-- **Room v2** database — `TransferEntity` + `FileItemEntity` tables
-- `PulseViewModel` (AndroidViewModel) — single source of truth for all UI state
-- `StateFlow` for peers, connection info, progress, transfers, device files
-- `DeviceFiles.queryAll()` — MediaStore query for all file categories
-- Coroutines + `Dispatchers.IO` for all network and disk operations
-
-### ⚙️ Settings
-- Theme toggle (Dark / Light)
-- Device display name
-- Download folder path
-- Notification preferences
-- Clear transfer history
+### 🔒 Trust & safety
+- Every socket connection opens with an explicit intent byte (push vs. pull) — the wire protocol never guesses
+- Nothing is written to disk, and nothing is sent, until both devices' users have confirmed the same match-code
+- No analytics, no ads, no network calls beyond the direct peer-to-peer link
 
 ---
 
-## 🗂️ File Structure
+## 🧠 How a transfer actually happens
+
+Sharing Plus uses a small mode-byte protocol on top of raw TCP, plus a separate one-shot handshake connection for the match-code confirm. This is what makes the QR sender/receiver swap *and* the trust gate possible without the two flows stepping on each other:
 
 ```
-Spark-Share/
-├── app/src/main/java/com/willyshare/willykez/
-│   ├── MainActivity.kt                  # Single-Activity host; back-stack nav, AnimatedContent routing
-│   │
-│   ├── net/
-│   │   ├── WifiDirectManager.kt         # WifiP2pManager wrapper — discovery, connect, BroadcastReceiver
-│   │   ├── FileTransfer.kt              # FileReceiveServer (NIO) + FileSenderClient + ProgressAggregator
-│   │   ├── QrPairing.kt                 # ZXing QR encode/decode · SPARKS payload format
-│   │   └── DeviceFiles.kt               # MediaStore queries for all file categories
-│   │
-│   ├── ui/
-│   │   ├── PulseViewModel.kt            # AndroidViewModel — all app state, Wi-Fi Direct, transfers
-│   │   ├── SleekComponents.kt           # Shared Composables: TopBar, BottomNav, GlassCard, AuroraBackground, RadarPulseRing, FileProgressRow
-│   │   ├── GroupedList.kt               # Category-grouped file list composable
-│   │   ├── PulseIcons.kt                # Custom vector icon definitions
-│   │   │
-│   │   ├── theme/
-│   │   │   ├── Color.kt                 # SleekPalette data class + CompositionLocal + dark/light palettes
-│   │   │   ├── Theme.kt                 # SparkTheme — MaterialTheme wrapper with SleekPalette provision
-│   │   │   ├── Type.kt                  # Typography scale
-│   │   │   └── Shapes.kt                # Shape tokens (PillShape etc.)
-│   │   │
-│   │   └── screens/
-│   │       ├── SplashScreen.kt          # Animated logo splash → onboarding or dashboard
-│   │       ├── OnboardingScreen.kt      # First-run permission walkthrough
-│   │       ├── DashboardScreen.kt       # Home — send/receive cards, recent transfers
-│   │       ├── SelectFilesScreen.kt     # File picker with category tabs and multi-select
-│   │       ├── SendScreen.kt            # Device discovery + Wi-Fi Direct connect + send trigger
-│   │       ├── TransferringScreen.kt    # Live per-file + overall progress during send
-│   │       ├── ReceiveScreen.kt         # Listening state, QR display shortcut, incoming progress
-│   │       ├── MyQrScreen.kt            # Full-screen QR code for this device
-│   │       ├── ScanQrScreen.kt          # CameraX live QR scanner
-│   │       ├── HistoryScreen.kt         # Room-backed transfer log with filter chips
-│   │       └── SettingsScreen.kt        # Theme, device name, storage, notifications
-│   │
-│   └── data/
-│       ├── PulseDatabase.kt             # Room database (v2), singleton pattern
-│       ├── PulseDao.kt                  # DAO — insert, getAllTransfers, getAllFiles, clearAll
-│       ├── TransferEntity.kt            # Room entity: transfer log record
-│       └── FileItemEntity.kt            # Room entity: cached file browser item
-│
-├── app/src/main/AndroidManifest.xml     # Permissions: Wi-Fi Direct, Camera, Storage, Notifications
-├── app/build.gradle.kts                 # Compose BOM, Room KSP, CameraX, ZXing, Coroutines
-├── gradle/libs.versions.toml            # Version catalog
-└── README.md                            # This file
+1. HANDSHAKE  (its own short-lived connection, always first)
+   dialer → [MODE_HANDSHAKE][device name][4-digit code][push/pull]
+   acceptor's user sees the code, taps Confirm/Decline
+   acceptor → [1 = confirmed | 0 = declined]
+   dialer's own user must ALSO confirm locally before this counts as a yes
+
+2. TRANSFER  (only opened if step 1 returned true)
+   MODE_PUSH: dialer writes  [fileCount][name, size, bytes]...  → acceptor reads & saves
+   MODE_PULL: dialer requests → acceptor (who has the cart) switches roles for this
+              connection and writes its files down the same socket instead
+```
+
+Two things fall out of this design:
+
+- **The always-on receive listener never has to guess who's connecting or why** — the first byte always tells it.
+- **Parallel multi-stream sends never trigger duplicate confirm dialogs** — the handshake is a single connection, separate from the (possibly several) parallel data connections that follow it.
+
+---
+
+## 🗺️ Where things stand
+
+| Stage | What it covers | Status |
+|---|---|---|
+| 1 | Core Wi-Fi Direct transfer, notifications, history | ✅ Done |
+| 2 | Cart/role decoupling, unified connection state machine, panic-button reset | ✅ Done |
+| 2.5 | Notification crash fix + guardrails | ✅ Done |
+| 3a | Grid thumbnails, video play-badge | ✅ Done |
+| 3b | QR sender/receiver role swap (pull model) + high-speed mode band-switch fix | ✅ Done |
+| 4 | Match-code confirmation before any transfer begins | ✅ Done |
+| — | Unified Nearby/Connect screen (merging Send/Receive into one state-driven screen) | ⏳ Scoped, not started — Send and Receive are intentionally still separate screens for now |
+| — | Cancel support for a pull-triggered push | ⏳ Known gap — see below |
+
+### Known limitations worth knowing about
+- **Cancelling a pull-triggered send isn't wired up yet.** If someone scans your QR and pulls from you, that push runs on its own thread rather than through the cancellable job the rest of the app uses — the in-progress screen is honest about this (its button says "Hide," not "Cancel") rather than pretending to stop something it can't.
+- **The peer-list (non-QR) connect flow is push-only**, unchanged from earlier versions — you pick a nearby device, you send to them. Only the QR flow uses the pull model.
+
+---
+
+## 🏗️ Project structure
+
+```
+app/src/main/java/com/willyshare/willykez/
+├── MainActivity.kt          — Compose navigation host, global PIN overlay, back-stack
+├── net/                     — Wi-Fi Direct, raw socket transfer protocol, QR payload codec
+│   ├── WifiDirectManager.kt
+│   ├── FileTransfer.kt      — FileSenderClient / FileReceiveServer, the mode-byte protocol
+│   └── QrPairing.kt
+├── ui/
+│   ├── PulseViewModel.kt    — single source of truth: cart, connection state, transfer state
+│   └── screens/             — one file per screen (Send, Receive, MyQr, ScanQr, Transferring, …)
+├── data/                    — Room database (transfer history)
+├── service/                 — foreground service keeping receive-listening alive
+└── util/                    — notifications, share-intent handling
 ```
 
 ---
 
-## ⚙️ Setup
+## 🛠️ Building
 
-### Requirements
-- **Android Studio Hedgehog** or newer
-- **minSdkVersion 24** (Android 7.0 Nougat)
-- **targetSdkVersion 36**
-- Kotlin · Jetpack Compose · KSP
+Standard Android Studio / Gradle project — open the root folder, let Gradle sync, run on a device (Wi-Fi Direct doesn't work in the emulator). Two physical devices are needed to test any transfer.
 
-### Dependencies (key)
-
-```toml
-# gradle/libs.versions.toml
-androidx-compose-bom = "2024.x"
-androidx-room        = "2.6.x"
-androidx-camera      = "1.3.x"
-zxing-core           = "3.5.x"
-accompanist-permissions = "0.34.x"
-kotlinx-coroutines   = "1.7.x"
-```
-
-### Permissions (AndroidManifest)
-
-```xml
-<uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-```
-
-> On **Android 13+**, `NEARBY_WIFI_DEVICES` replaces the location permission for Wi-Fi Direct peer discovery. The manifest handles both cases.
-
----
-
-## 🔄 Transfer Flow
-
-```
-Receiver                          Sender
-────────                          ──────
-1. Opens ReceiveScreen            
-2. Starts FileReceiveServer       
-   (NIO ServerSocketChannel)      
-3. Generates QR:                  
-   SPARKS|name|ip|port            
-                                  4. Scans QR (CameraX + ZXing)
-                                  5. QrPairing.parsePayload()
-                                  6. Sets targetIp / targetPort
-                                  7. Picks files (SelectFilesScreen)
-                                  8. sendFiles() → FileSenderClient
-                                     coroutineScope { async per file }
-                                     writes: fileName\n | fileSize | bytes
-9. Accepts connection             ←────────────────────────────────
-10. Reads header + bytes
-11. Saves file to disk
-12. Inserts TransferEntity        
-    (Room)                        → Inserts TransferEntity (Room)
+```bash
+./gradlew assembleDebug
 ```
 
 ---
 
-## 📋 Changelog
-
-### v1.0.0 — Initial Release *(current)*
-- `NEW` Wi-Fi Direct peer discovery + connect via `WifiDirectManager`
-- `NEW` QR Code pairing (`QrPairing` encode/decode, ZXing + CameraX)
-- `NEW` Multi-file parallel send with per-file + overall progress
-- `NEW` NIO `ServerSocketChannel` receive server
-- `NEW` Room v2 database — transfer history + file cache
-- `NEW` Full Compose UI — 11 screens, animated transitions
-- `NEW` `SleekPalette` custom M3 design system (dark + light)
-- `NEW` `GlassCard`, `AuroraBackground`, `RadarPulseRing` custom components
-- `NEW` `PulseViewModel` — single ViewModel for all state
-- `NEW` `DeviceFiles` MediaStore query for all file categories
-- `NEW` Onboarding permission flow on first launch
-- `NEW` Settings: theme, device name, storage path, notifications
-
----
-
-## 🔒 Privacy
-
-- ✅ **Fully offline** — no internet connection required for transfers
-- ✅ **No cloud storage** — files go directly device-to-device
-- ✅ **No account or login**
-- ✅ **No analytics or tracking SDKs**
-- ✅ **All history stored locally** (Room / SQLite)
-- ✅ **No ads · No subscriptions · Completely free**
-
----
-
-## 📄 License
-
-```
-MIT License — Copyright (c) 2026 Willykez
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software to use, copy, modify, merge, publish,
-distribute and/or sell copies, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
-```
-
----
-
-## 📬 Contact
-
-**Developer:** Willykez  
-**GitHub:** [@Willykez](https://github.com/Willykez)  
-**Package:** `com.willyshare.willykez`
-
----
-
-<p align="center">
-  Made with ⚡ in Tanzania 🇹🇿 · If this helped you, please ⭐ the repo!
-</p>
+<p align="center"><sub>Built independently. No ads, no tracking, no cloud.</sub></p>

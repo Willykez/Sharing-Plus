@@ -8,7 +8,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import com.willyshare.willykez.net.SendableFile
 
-/** True if this intent is another app sharing content into Sparks. */
+/** True if this intent is another app sharing content into Sharing Plus. */
 fun Intent.isShareIntent(): Boolean =
     action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
 

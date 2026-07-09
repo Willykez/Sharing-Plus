@@ -55,7 +55,7 @@ object NotificationHelper {
     fun buildIdleListeningNotification(context: Context): Notification {
         ensureChannels(context)
         return NotificationCompat.Builder(context, TRANSFER_CHANNEL_ID)
-            .setContentTitle("Sparks is ready to receive")
+            .setContentTitle("Sharing Plus is ready to receive")
             .setContentText("Listening for nearby devices")
             .setSmallIcon(R.drawable.ic_notification_spark)
             .setOngoing(true)

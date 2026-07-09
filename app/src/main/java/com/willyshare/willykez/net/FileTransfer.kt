@@ -40,6 +40,12 @@ private const val PROGRESS_THROTTLE_MS = 120L
  */
 private const val MODE_PUSH: Byte = 1
 private const val MODE_PULL: Byte = 2
+/** A short-lived connection used only to exchange and confirm a match-code before either
+ *  side commits to a real transfer - see [performPinHandshake] and [FileReceiveServer]'s
+ *  onHandshakeRequested callback. Closed immediately after the confirm/decline byte, win or
+ *  lose; the real MODE_PUSH/MODE_PULL connection (if confirmed) is opened separately after. */
+private const val MODE_HANDSHAKE: Byte = 3
+private const val HANDSHAKE_TIMEOUT_MS = 30_000
 
 data class SendableFile(
     val uri: Uri,
@@ -86,6 +92,41 @@ object NetworkUtils {
             }
             null
         } catch (_: Exception) { null }
+    }
+}
+
+/**
+ * Dialer side of the Stage 4 match-code handshake. Opens its own short-lived connection
+ * (separate from the real transfer connection(s), so it never collides with [PARALLEL_STREAMS]
+ * parallel push connections each popping their own confirm dialog), generates a 4-digit code,
+ * sends it plus this device's name and intent, waits for the LOCAL user to confirm via
+ * [onNeedLocalConfirm], and - only if they do - waits for the remote user's answer too. Both
+ * must say yes for this to return true; either a local decline, a remote decline, a timeout,
+ * or any I/O error all resolve to false.
+ */
+suspend fun performPinHandshake(
+    hostIp: String,
+    port: Int,
+    myDeviceName: String,
+    isPull: Boolean,
+    onNeedLocalConfirm: suspend (pin: String) -> Boolean
+): Boolean = kotlinx.coroutines.withContext(Dispatchers.IO) {
+    try {
+        SocketChannel.open(InetSocketAddress(hostIp, port)).use { channel ->
+            channel.socket().soTimeout = HANDSHAKE_TIMEOUT_MS
+            val dout = DataOutputStream(channel.socket().getOutputStream())
+            val din = DataInputStream(channel.socket().getInputStream())
+            val pin = (1000..9999).random().toString()
+            dout.writeByte(MODE_HANDSHAKE.toInt())
+            dout.writeUTF(myDeviceName)
+            dout.writeUTF(pin)
+            dout.writeUTF(if (isPull) "PULL" else "PUSH")
+            dout.flush()
+            if (!onNeedLocalConfirm(pin)) return@withContext false
+            din.readByte().toInt() == 1
+        }
+    } catch (t: Throwable) {
+        false
     }
 }
 
@@ -147,7 +188,14 @@ class FileReceiveServer(
      *  queued files rather than push us theirs. The callback owns the channel from this
      *  point: it must write the cart (or nothing, if empty) and the channel will be closed
      *  automatically once it returns. */
-    private val onPullRequested: (SocketChannel) -> Unit = {}
+    private val onPullRequested: (SocketChannel) -> Unit = {},
+    /** Called when an accepted connection declares MODE_HANDSHAKE - the pre-transfer match-code
+     *  confirm step (Stage 4). Receives the code, the dialer's device name, and whether they're
+     *  requesting to pull (vs push); should surface a confirm/decline UI to the local user and
+     *  suspend until they respond (or time out). Default auto-declines, so nothing can slip
+     *  through unconfirmed if this isn't wired up. */
+    private val onHandshakeRequested: suspend (pin: String, peerName: String, isPullIntent: Boolean) -> Boolean =
+        { _, _, _ -> false }
 ) {
     private val aggregator = ProgressAggregator()
     val progress: StateFlow<TransferProgress> = aggregator.flow.asStateFlow()
@@ -190,6 +238,7 @@ class FileReceiveServer(
                                 val din = DataInputStream(ch.socket().getInputStream())
                                 when (din.readByte()) {
                                     MODE_PULL -> onPullRequested(ch)
+                                    MODE_HANDSHAKE -> handleHandshake(ch, din)
                                     else -> receiveFilesInto(ch, din, onFileReceived) // MODE_PUSH (default)
                                 }
                             }
@@ -206,6 +255,29 @@ class FileReceiveServer(
                 _isListening.value = false
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    /** Acceptor side of the Stage 4 match-code handshake: reads the dialer's name + code +
+     *  intent, blocks (via runBlocking - safe here, we're already on a background pool
+     *  thread) until the local user confirms or declines, and writes the answer back. This
+     *  connection is handshake-only; it's always closed right after by the caller's
+     *  `client.use { }`, regardless of the answer. */
+    private fun handleHandshake(channel: SocketChannel, din: DataInputStream) {
+        val peerName = din.readUTF()
+        val pin = din.readUTF()
+        val isPullIntent = din.readUTF() == "PULL"
+        val confirmed = try {
+            kotlinx.coroutines.runBlocking { onHandshakeRequested(pin, peerName, isPullIntent) }
+        } catch (_: Throwable) {
+            false
+        }
+        try {
+            val dout = DataOutputStream(channel.socket().getOutputStream())
+            dout.writeByte(if (confirmed) 1 else 0)
+            dout.flush()
+        } catch (_: Exception) {
+            // Dialer already gone (they may have hit their own timeout) - nothing to do.
+        }
     }
 
     /**

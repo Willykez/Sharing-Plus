@@ -95,7 +95,7 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
                     Icon(PulseIcons.Brand, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("Sparks", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekPrimary)
+                Text("Sharing Plus", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekPrimary)
             }
             Text(
                 text = "SKIP",

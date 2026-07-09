@@ -24,6 +24,7 @@ import com.willyshare.willykez.net.StorageRoot
 import com.willyshare.willykez.net.TRANSFER_PORT
 import com.willyshare.willykez.net.TransferProgress
 import com.willyshare.willykez.net.WifiDirectManager
+import com.willyshare.willykez.net.performPinHandshake
 import com.willyshare.willykez.service.SparkTransferService
 import com.willyshare.willykez.util.NotificationHelper
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,11 @@ enum class TargetSource { WIFI_DIRECT, QR_PAIR, NONE }
  * incrementally.
  */
 enum class LinkState { IDLE, CONNECTED, TRANSFERRING }
+
+/** Matches FileTransfer.kt's own handshake socket timeout, so the local confirm prompt and
+ *  the underlying socket read time out around the same moment rather than one hanging on
+ *  after the other has already given up. */
+private const val HANDSHAKE_UI_TIMEOUT_MS = 30_000L
 
 class PulseViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = PulseDatabase.getDatabase(application).pulseDao()
@@ -77,7 +83,10 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 ReceiveTarget.Plain(defaultReceiveDir)
             }
         },
-        onPullRequested = ::handleIncomingPullRequest
+        onPullRequested = ::handleIncomingPullRequest,
+        onHandshakeRequested = { pin, peerName, isPullIntent ->
+            requestLocalPinConfirm(pin, peerName, isIncoming = true, isPullIntent = isPullIntent)
+        }
     )
 
     /** Human-readable label for Settings: either the default path or the picked folder's name. */
@@ -362,7 +371,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshMyQrPayload() {
         val ip = NetworkUtils.getLocalIpAddress()
         val suffix = UUID.randomUUID().toString().take(4).uppercase()
-        val networkName = "DIRECT-sk-Sparks$suffix"
+        val networkName = "DIRECT-sk-SharingPlus$suffix"
         val passphrase = UUID.randomUUID().toString().replace("-", "").take(12)
         // Wi-Fi Direct group creation works on every Android version via the plain
         // (non-band-forced) overload - it's the reliable primary path now, not gated
@@ -416,6 +425,39 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ---------- Receiving files ----------
+
+    // ---------- Stage 4: pre-transfer match-code confirmation ----------
+
+    /** One pending confirmation at a time - both the "I dialed out" and "someone dialed me"
+     *  cases funnel through here, distinguished by [isIncoming], so a single overlay
+     *  (see PinConfirmationOverlay) covers both directions. */
+    data class PendingPinConfirmation(
+        val pin: String,
+        val peerLabel: String,
+        val isIncoming: Boolean,
+        val isPullIntent: Boolean
+    )
+
+    val pinConfirmation = MutableStateFlow<PendingPinConfirmation?>(null)
+    private var pinDeferred: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+
+    /** Surfaces the overlay and suspends until the local user taps Confirm/Decline, or
+     *  [HANDSHAKE_UI_TIMEOUT_MS] passes with no answer (auto-decline - never leave a stale
+     *  prompt blocking a socket thread forever). */
+    private suspend fun requestLocalPinConfirm(pin: String, peerLabel: String, isIncoming: Boolean, isPullIntent: Boolean): Boolean {
+        val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        pinDeferred = deferred
+        pinConfirmation.value = PendingPinConfirmation(pin, peerLabel, isIncoming, isPullIntent)
+        val result = kotlinx.coroutines.withTimeoutOrNull(HANDSHAKE_UI_TIMEOUT_MS) { deferred.await() } ?: false
+        pinConfirmation.value = null
+        pinDeferred = null
+        return result
+    }
+
+    /** Called from PinConfirmationOverlay's Confirm/Decline buttons. */
+    fun respondToPinConfirmation(accept: Boolean) {
+        pinDeferred?.complete(accept)
+    }
 
     fun startReceiving() {
         SparkTransferService.start(appContext)
@@ -530,7 +572,10 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         transferJob = viewModelScope.launch {
             var success = false
             try {
-                success = withContext(Dispatchers.IO) {
+                val handshakeOk = performPinHandshake(
+                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = true
+                ) { pin -> requestLocalPinConfirm(pin, targetName.value ?: "device", isIncoming = false, isPullIntent = true) }
+                success = handshakeOk && withContext(Dispatchers.IO) {
                     fileReceiver.pullFrom(ip, targetPort.value) { savedPath, size ->
                         recordReceivedFile(savedPath, size)
                     }
@@ -584,7 +629,10 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 val (selected, fromBrowser, fromShareIntent) = resolveCurrentCart()
                 val fromMediaStore = selected.map { SendableFile(Uri.parse(it.uri), it.name, it.sizeBytes) }
                 val sendables = fromMediaStore + fromBrowser + fromShareIntent
-                success = withContext(Dispatchers.IO) {
+                val handshakeOk = performPinHandshake(
+                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = false
+                ) { pin -> requestLocalPinConfirm(pin, targetName.value ?: "device", isIncoming = false, isPullIntent = false) }
+                success = handshakeOk && withContext(Dispatchers.IO) {
                     fileSender.send(ip, sendables)
                 }
                 if (success) {
@@ -611,7 +659,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         // Not stopping the service - same reasoning as above, receiving stays up.
     }
 
-    // ---------- Files shared into Sparks from another app (Gallery, Files, etc.) ----------
+    // ---------- Files shared into Sharing Plus from another app (Gallery, Files, etc.) ----------
 
     /** Files handed to us via ACTION_SEND / ACTION_SEND_MULTIPLE from another app, awaiting a pick target. */
     val pendingSharedFiles = MutableStateFlow<List<SendableFile>>(emptyList())
