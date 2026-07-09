@@ -484,7 +484,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     /** The full pending cart right now, from every source (MediaStore picks, folder browser,
      *  and files handed in via another app's share sheet) - used by both the normal push
      *  flow ([startTransferSession]) and the pull-response flow ([handleIncomingPullRequest]). */
-    private fun resolveCurrentCart(): Triple<List<FileItemEntity>, List<SendableFile>, List<SendableFile>> {
+    private suspend fun resolveCurrentCart(): Triple<List<FileItemEntity>, List<SendableFile>, List<SendableFile>> {
         val selected = allFiles.value.filter { it.isSelected }
         val fromBrowser = resolveBrowseSendables()
         val fromShareIntent = pendingSharedFiles.value
@@ -542,7 +542,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
      * is a larger change than this pass covers.
      */
     private fun handleIncomingPullRequest(channel: SocketChannel) {
-        val (selected, fromBrowser, fromShareIntent) = resolveCurrentCart()
+        val (selected, fromBrowser, fromShareIntent) = kotlinx.coroutines.runBlocking { resolveCurrentCart() }
         val fromMediaStore = selected.map { SendableFile(Uri.parse(it.uri), it.name, it.sizeBytes) }
         val sendables = fromMediaStore + fromBrowser + fromShareIntent
         if (sendables.isEmpty()) {
