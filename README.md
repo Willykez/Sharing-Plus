@@ -1,5 +1,3 @@
-
-
 <p align="center">
   <img src="https://img.shields.io/badge/Version-1.0.0-FF6B35?style=for-the-badge&labelColor=0D0D1A"/>
   <img src="https://img.shields.io/badge/Android-7.0%2B-4CAF50?style=for-the-badge&logo=android&logoColor=white"/>
@@ -33,7 +31,7 @@ Built from the ground up with **Jetpack Compose**, a custom Material 3 `SleekPal
 - Dual connection path: Wi-Fi Direct auto-connect **or** manual QR scan
 
 ### 📤 Sending
-- Pick any files from device storage — Photos, Videos, Documents, APKs, Audio, Archives.
+- Pick any files from device storage — Photos, Videos, Documents, APKs, Audio, Archives
 - Grouped file browser (`GroupedList`) with category tabs and multi-select
 - Per-file progress rows with speed (MB/s) and live byte count
 - Overall transfer progress aggregated across all files in one batch
