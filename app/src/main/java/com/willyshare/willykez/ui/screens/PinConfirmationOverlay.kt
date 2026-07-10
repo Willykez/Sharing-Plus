@@ -142,16 +142,20 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = "Confirm this connection",
+                    text = if (request.isIncoming) "Confirm this connection" else "Waiting for confirmation\u2026",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = SleekOnSurface
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = buildString {
-                        append(request.peerLabel)
-                        append(if (request.isPullIntent) " wants to pull your files" else " wants to send you files")
+                    text = if (request.isIncoming) {
+                        buildString {
+                            append(request.peerLabel)
+                            append(if (request.isPullIntent) " wants to pull your files" else " wants to send you files")
+                        }
+                    } else {
+                        "Ask ${request.peerLabel} to confirm this code matches on their screen"
                     },
                     fontSize = 13.sp,
                     color = SleekOnSurfaceVariant,
@@ -188,7 +192,7 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                     Icon(Icons.Filled.VerifiedUser, contentDescription = null, tint = SleekOnSurfaceVariant, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "Make sure this code matches on both devices",
+                        text = if (request.isIncoming) "Make sure this code matches on both devices" else "Waiting for them to confirm this same code",
                         fontSize = 11.sp,
                         color = SleekOnSurfaceVariant
                     )
@@ -209,33 +213,52 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                            .clickable {
-                                haptics.performHapticFeedback(HapticFeedbackType.Reject)
-                                viewModel.respondToPinConfirmation(false)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Decline", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Brush.linearGradient(listOf(VioletAccent, CyanBright)))
-                            .clickable {
-                                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                                viewModel.respondToPinConfirmation(true)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Confirm", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    if (request.isIncoming) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .clickable {
+                                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                                    viewModel.respondToPinConfirmation(false)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Decline", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Brush.linearGradient(listOf(VioletAccent, CyanBright)))
+                                .clickable {
+                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    viewModel.respondToPinConfirmation(true)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Confirm", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    } else {
+                        // Dialer side: nothing to confirm here - this device already chose its
+                        // target deliberately. Just a way out if they change their mind.
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(1.dp, SleekOutline.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                                .clickable {
+                                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                                    viewModel.cancelPendingHandshake()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Cancel", color = SleekOnSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
                 }
             }

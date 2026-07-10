@@ -96,23 +96,25 @@ object NetworkUtils {
 }
 
 /**
- * Dialer side of the Stage 4 match-code handshake. Opens its own short-lived connection
- * (separate from the real transfer connection(s), so it never collides with [PARALLEL_STREAMS]
- * parallel push connections each popping their own confirm dialog), generates a 4-digit code,
- * sends it plus this device's name and intent, waits for the LOCAL user to confirm via
- * [onNeedLocalConfirm], and - only if they do - waits for the remote user's answer too. Both
- * must say yes for this to return true; either a local decline, a remote decline, a timeout,
- * or any I/O error all resolve to false.
+ * Dialer side of the Stage 4 match-code handshake - mirrors Quick Share's pattern rather than
+ * requiring a redundant confirm tap from whoever already deliberately chose this target: the
+ * dialer generates the code, sends it, and then just WAITS (showing it for reference, with the
+ * option to cancel) while the OTHER device's user is the one who actively has to confirm it
+ * matches. [onChannelReady] hands back the live channel immediately so the caller can close it
+ * to cancel a still-waiting handshake; [onWaitingForPeer] is fired once the code has been sent,
+ * to drive the passive "waiting" UI.
  */
 suspend fun performPinHandshake(
     hostIp: String,
     port: Int,
     myDeviceName: String,
     isPull: Boolean,
-    onNeedLocalConfirm: suspend (pin: String) -> Boolean
+    onChannelReady: (SocketChannel) -> Unit,
+    onWaitingForPeer: suspend (pin: String) -> Unit
 ): Boolean = kotlinx.coroutines.withContext(Dispatchers.IO) {
     try {
         SocketChannel.open(InetSocketAddress(hostIp, port)).use { channel ->
+            onChannelReady(channel)
             channel.socket().soTimeout = HANDSHAKE_TIMEOUT_MS
             val dout = DataOutputStream(channel.socket().getOutputStream())
             val din = DataInputStream(channel.socket().getInputStream())
@@ -122,8 +124,11 @@ suspend fun performPinHandshake(
             dout.writeUTF(pin)
             dout.writeUTF(if (isPull) "PULL" else "PUSH")
             dout.flush()
-            if (!onNeedLocalConfirm(pin)) return@withContext false
-            din.readByte().toInt() == 1
+            onWaitingForPeer(pin)
+            // Blocking read - this is exactly what a Cancel tap interrupts: closing the
+            // channel from the UI side (see PulseViewModel.cancelPendingHandshake) makes
+            // this throw immediately instead of sitting here until HANDSHAKE_TIMEOUT_MS.
+            try { din.readByte().toInt() == 1 } catch (t: Throwable) { false }
         }
     } catch (t: Throwable) {
         false

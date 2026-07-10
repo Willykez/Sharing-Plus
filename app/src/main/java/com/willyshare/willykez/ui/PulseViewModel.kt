@@ -85,7 +85,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         },
         onPullRequested = ::handleIncomingPullRequest,
         onHandshakeRequested = { pin, peerName, isPullIntent ->
-            requestLocalPinConfirm(pin, peerName, isIncoming = true, isPullIntent = isPullIntent)
+            requestLocalPinConfirm(pin, peerName, isPullIntent = isPullIntent)
         }
     )
 
@@ -428,9 +428,12 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Stage 4: pre-transfer match-code confirmation ----------
 
-    /** One pending confirmation at a time - both the "I dialed out" and "someone dialed me"
-     *  cases funnel through here, distinguished by [isIncoming], so a single overlay
-     *  (see PinConfirmationOverlay) covers both directions. */
+    /** One pending prompt at a time. [isIncoming] drives which UI PinConfirmationOverlay shows:
+     *  - true  = someone connected TO us (we're the acceptor) - ACTIVE prompt, Confirm/Decline,
+     *            exactly like Quick Share's "Elia's phone wants to share a file, PIN 1639" gate.
+     *  - false = we dialed out (we're the dialer) - PASSIVE display only, since we already
+     *            deliberately chose this target; just shows the code + "Waiting..." + Cancel,
+     *            matching Quick Share's own sender-side screen in the reference screenshot. */
     data class PendingPinConfirmation(
         val pin: String,
         val peerLabel: String,
@@ -440,23 +443,43 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     val pinConfirmation = MutableStateFlow<PendingPinConfirmation?>(null)
     private var pinDeferred: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+    private var activeHandshakeChannel: SocketChannel? = null
 
-    /** Surfaces the overlay and suspends until the local user taps Confirm/Decline, or
-     *  [HANDSHAKE_UI_TIMEOUT_MS] passes with no answer (auto-decline - never leave a stale
-     *  prompt blocking a socket thread forever). */
-    private suspend fun requestLocalPinConfirm(pin: String, peerLabel: String, isIncoming: Boolean, isPullIntent: Boolean): Boolean {
+    /** Acceptor side only: surfaces the ACTIVE overlay and suspends until the local user taps
+     *  Confirm/Decline, or [HANDSHAKE_UI_TIMEOUT_MS] passes with no answer (auto-decline -
+     *  never leave a stale prompt blocking a socket thread forever). */
+    private suspend fun requestLocalPinConfirm(pin: String, peerLabel: String, isPullIntent: Boolean): Boolean {
         val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
         pinDeferred = deferred
-        pinConfirmation.value = PendingPinConfirmation(pin, peerLabel, isIncoming, isPullIntent)
+        pinConfirmation.value = PendingPinConfirmation(pin, peerLabel, isIncoming = true, isPullIntent = isPullIntent)
         val result = kotlinx.coroutines.withTimeoutOrNull(HANDSHAKE_UI_TIMEOUT_MS) { deferred.await() } ?: false
         pinConfirmation.value = null
         pinDeferred = null
         return result
     }
 
-    /** Called from PinConfirmationOverlay's Confirm/Decline buttons. */
+    /** Dialer side only: just shows the code passively - no gate, since dialing out already
+     *  was this device's own affirmative action (picking a peer, or scanning their QR). */
+    private fun showWaitingForPeer(pin: String, peerLabel: String, isPullIntent: Boolean) {
+        pinConfirmation.value = PendingPinConfirmation(pin, peerLabel, isIncoming = false, isPullIntent = isPullIntent)
+    }
+
+    private fun clearPinPrompt() {
+        pinConfirmation.value = null
+        activeHandshakeChannel = null
+    }
+
+    /** Called from PinConfirmationOverlay's Confirm/Decline buttons (acceptor side only). */
     fun respondToPinConfirmation(accept: Boolean) {
         pinDeferred?.complete(accept)
+    }
+
+    /** Called from PinConfirmationOverlay's Cancel button (dialer side only, while passively
+     *  waiting). Closing the channel makes the blocking read in performPinHandshake fail
+     *  immediately instead of sitting there until the full handshake timeout. */
+    fun cancelPendingHandshake() {
+        try { activeHandshakeChannel?.close() } catch (_: Exception) {}
+        clearPinPrompt()
     }
 
     fun startReceiving() {
@@ -573,8 +596,11 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
             var success = false
             try {
                 val handshakeOk = performPinHandshake(
-                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = true
-                ) { pin -> requestLocalPinConfirm(pin, targetName.value ?: "device", isIncoming = false, isPullIntent = true) }
+                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = true,
+                    onChannelReady = { ch -> activeHandshakeChannel = ch },
+                    onWaitingForPeer = { pin -> showWaitingForPeer(pin, targetName.value ?: "device", isPullIntent = true) }
+                )
+                clearPinPrompt()
                 success = handshakeOk && withContext(Dispatchers.IO) {
                     fileReceiver.pullFrom(ip, targetPort.value) { savedPath, size ->
                         recordReceivedFile(savedPath, size)
@@ -630,8 +656,11 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 val fromMediaStore = selected.map { SendableFile(Uri.parse(it.uri), it.name, it.sizeBytes) }
                 val sendables = fromMediaStore + fromBrowser + fromShareIntent
                 val handshakeOk = performPinHandshake(
-                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = false
-                ) { pin -> requestLocalPinConfirm(pin, targetName.value ?: "device", isIncoming = false, isPullIntent = false) }
+                    ip, targetPort.value, wifiDirect.thisDeviceName.value, isPull = false,
+                    onChannelReady = { ch -> activeHandshakeChannel = ch },
+                    onWaitingForPeer = { pin -> showWaitingForPeer(pin, targetName.value ?: "device", isPullIntent = false) }
+                )
+                clearPinPrompt()
                 success = handshakeOk && withContext(Dispatchers.IO) {
                     fileSender.send(ip, sendables)
                 }
