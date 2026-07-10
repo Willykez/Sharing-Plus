@@ -53,13 +53,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.willyshare.willykez.ui.PulseViewModel
-import com.willyshare.willykez.ui.theme.CyanBright
+import com.willyshare.willykez.ui.theme.SleekSecondary
 import com.willyshare.willykez.ui.theme.SleekCard
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekOutline
 import com.willyshare.willykez.ui.theme.SleekPrimary
-import com.willyshare.willykez.ui.theme.VioletAccent
 import kotlinx.coroutines.delay
 
 private const val CONFIRM_WINDOW_MS = 30_000
@@ -118,7 +117,7 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                     .background(SleekCard.copy(alpha = 0.92f))
                     .border(
                         width = 1.5.dp,
-                        brush = Brush.linearGradient(listOf(VioletAccent.copy(alpha = glow), CyanBright.copy(alpha = glow))),
+                        brush = Brush.linearGradient(listOf(SleekPrimary.copy(alpha = glow), SleekSecondary.copy(alpha = glow))),
                         shape = RoundedCornerShape(28.dp)
                     )
                     .padding(horizontal = 24.dp, vertical = 28.dp),
@@ -128,7 +127,7 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(VioletAccent, CyanBright))),
+                        .background(Brush.linearGradient(listOf(SleekPrimary, SleekSecondary))),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -233,7 +232,7 @@ fun PinConfirmationOverlay(viewModel: PulseViewModel) {
                                 .weight(1f)
                                 .height(48.dp)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(Brush.linearGradient(listOf(VioletAccent, CyanBright)))
+                                .background(Brush.linearGradient(listOf(SleekPrimary, SleekSecondary)))
                                 .clickable {
                                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                                     viewModel.respondToPinConfirmation(true)

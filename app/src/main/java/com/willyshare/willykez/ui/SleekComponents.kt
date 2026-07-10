@@ -55,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -501,50 +502,97 @@ fun RadarPulseRing(sizeDp: Int, delayMillis: Int = 0) {
     )
 }
 
+/**
+ * The app's background signature - deliberately NOT the soft violet/cyan blur-blob look this
+ * screen used to have (that was hardcoded to VioletAccent/CyanBright and ignored whichever of
+ * the 8 curated palettes - or Material You, or a custom color - the person actually picked in
+ * Settings). This draws a fine dot-grid mesh plus a diagonal scan-line sweep, entirely from the
+ * live SleekPrimary/SleekSecondary tokens, so it's correct under every theme AND reads as a
+ * distinct "radar/mesh" identity rather than ambient glow.
+ */
 @Composable
 fun AuroraBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-    val transition = rememberInfiniteTransition(label = "aurora")
-    val shift by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Reverse),
-        label = "shift"
+    val transition = rememberInfiniteTransition(label = "mesh_field")
+    val sweep by transition.animateFloat(
+        initialValue = -0.3f, targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(tween(6500, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        label = "sweep"
     )
-    val c1 = VioletAccent
-    val c2 = CyanBright
-    val c3 = SleekPrimary
+    val pulse by transition.animateFloat(
+        initialValue = 0.6f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(3200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    val primary = SleekPrimary
+    val secondary = SleekSecondary
     val bg = SleekBg
+    val dotColor = SleekOutline
 
     Box(modifier = modifier.fillMaxSize().background(bg)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
+
+            // Fine dot-grid mesh - the structural signature replacing soft blur blobs.
+            val spacing = 32.dp.toPx()
+            var gy = spacing / 2
+            while (gy < h) {
+                var gx = spacing / 2
+                while (gx < w) {
+                    drawCircle(color = dotColor.copy(alpha = 0.09f), radius = 1.1.dp.toPx(), center = Offset(gx, gy))
+                    gx += spacing
+                }
+                gy += spacing
+            }
+
+            // Two restrained corner glows in the ACTUAL theme colors, so Ember/Ocean/Iris/etc
+            // all look correct here, not just whichever hue happened to be hardcoded before.
             drawCircle(
-                brush = Brush.radialGradient(listOf(c1.copy(alpha = 0.30f), Color.Transparent), radius = w * 0.65f),
-                radius = w * 0.65f,
-                center = Offset(w * (0.15f + shift * 0.3f), h * 0.12f)
-            )
-            drawCircle(
-                brush = Brush.radialGradient(listOf(c2.copy(alpha = 0.26f), Color.Transparent), radius = w * 0.55f),
+                brush = Brush.radialGradient(listOf(primary.copy(alpha = 0.22f * pulse), Color.Transparent), radius = w * 0.55f),
                 radius = w * 0.55f,
-                center = Offset(w * (0.9f - shift * 0.25f), h * 0.8f)
+                center = Offset(w * 0.06f, h * 0.04f)
             )
             drawCircle(
-                brush = Brush.radialGradient(listOf(c3.copy(alpha = 0.22f), Color.Transparent), radius = w * 0.5f),
+                brush = Brush.radialGradient(listOf(secondary.copy(alpha = 0.18f), Color.Transparent), radius = w * 0.5f),
                 radius = w * 0.5f,
-                center = Offset(w * 0.5f, h * (0.35f + shift * 0.35f))
+                center = Offset(w * 0.96f, h * 0.92f)
+            )
+
+            // Diagonal scan sweep - a deliberate "radar pass" motion instead of ambient drift.
+            val sweepX = w * sweep
+            drawLine(
+                brush = Brush.linearGradient(listOf(Color.Transparent, primary.copy(alpha = 0.30f), Color.Transparent)),
+                start = Offset(sweepX, -h * 0.2f),
+                end = Offset(sweepX - w * 0.35f, h * 1.2f),
+                strokeWidth = w * 0.16f
             )
         }
         content()
     }
 }
 
+/**
+ * A panel, not a pane of glass: solid surface, crisp 20dp corners, a thin theme-colored
+ * accent hairline across the top-left instead of an all-around glow border. Deliberately a
+ * different silhouette from the old fully-blurred, evenly-bordered GlassCard look.
+ */
 @Composable
 fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val accent = SleekPrimary
+    val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = modifier
-            .clip(MaterialTheme.shapes.large)
-            .background(SleekCard.copy(alpha = 0.55f))
-            .border(1.dp, SleekOutline.copy(alpha = 0.25f), MaterialTheme.shapes.large)
+            .clip(shape)
+            .background(SleekSurfaceContainer)
+            .border(1.dp, SleekOutline.copy(alpha = 0.16f), shape)
+            .drawBehind {
+                drawLine(
+                    color = accent.copy(alpha = 0.6f),
+                    start = Offset(size.width * 0.06f, 0f),
+                    end = Offset(size.width * 0.5f, 0f),
+                    strokeWidth = 2.5.dp.toPx()
+                )
+            }
             .padding(16.dp),
         content = content
     )

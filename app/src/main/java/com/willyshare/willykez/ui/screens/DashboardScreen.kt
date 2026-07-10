@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -63,10 +65,9 @@ import com.willyshare.willykez.ui.theme.SleekSecondaryContainer
 import com.willyshare.willykez.ui.theme.SleekSurfaceContainer
 
 /**
- * Home, restructured to mirror the Settings screen's grouped-list pattern: a device
- * summary card up top, then labeled sections (QUICK ACTIONS, RECENT ACTIVITY) each
- * rendered as one seamless rounded group via GroupedListColumn/GroupedListItem,
- * instead of individually floating cards.
+ * Home. A compact device-identity strip up top, then two large Send/Receive bento tiles as
+ * the primary destinations (not a generic three-row settings-style list), a secondary
+ * "choose files first" row, and Recent Activity below.
  */
 @Composable
 fun DashboardScreen(
@@ -113,46 +114,54 @@ fun DashboardScreen(
                 }
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
-                    DeviceSummaryCard(
-                        deviceName = deviceName,
-                        sentCount = sentCount,
-                        receivedCount = receivedCount,
-                        totalBytes = totalBytes
-                    )
+                    DeviceIdentityStrip(deviceName = deviceName, sentCount = sentCount, receivedCount = receivedCount, totalBytes = totalBytes)
                 }
 
                 item {
-                    DashboardSection(title = "QUICK ACTIONS") {
-                        GroupedListItem(position = GroupPosition.FIRST) {
-                            QuickActionRow(
-                                icon = com.willyshare.willykez.ui.PulseIcons.Send,
-                                title = "Send",
-                                subtitle = "Find a nearby device, then pick files",
-                                iconTint = SleekPrimary,
-                                iconBg = SleekPrimaryContainer,
-                                onClick = { onNavigate("send") }
-                            )
-                        }
-                        GroupedListItem(position = GroupPosition.MIDDLE) {
-                            QuickActionRow(
-                                icon = com.willyshare.willykez.ui.PulseIcons.FolderOpenEmpty,
-                                title = "Choose Files",
-                                subtitle = "Pick files first, connect after",
-                                iconTint = SleekPrimary,
-                                iconBg = SleekPrimaryContainer,
-                                onClick = { onNavigate("select") }
-                            )
-                        }
-                        GroupedListItem(position = GroupPosition.LAST) {
-                            QuickActionRow(
-                                icon = com.willyshare.willykez.ui.PulseIcons.Receive,
-                                title = "Receive",
-                                subtitle = "Wait for an incoming transfer",
-                                iconTint = SleekSecondary,
-                                iconBg = SleekSecondaryContainer,
-                                onClick = { onNavigate("receive") }
-                            )
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(168.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        HeroActionTile(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            icon = com.willyshare.willykez.ui.PulseIcons.Send,
+                            title = "Send",
+                            subtitle = "Pick files, find a device",
+                            containerColor = SleekPrimaryContainer,
+                            onColor = SleekOnPrimaryContainer,
+                            onClick = { onNavigate("send") }
+                        )
+                        HeroActionTile(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            icon = com.willyshare.willykez.ui.PulseIcons.Receive,
+                            title = "Receive",
+                            subtitle = "Wait for an incoming file",
+                            containerColor = SleekSecondaryContainer,
+                            onColor = SleekOnSecondaryContainer,
+                            onClick = { onNavigate("receive") }
+                        )
+                    }
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(SleekSurfaceContainer)
+                            .clickable { onNavigate("select") }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            com.willyshare.willykez.ui.PulseIcons.FolderOpenEmpty,
+                            contentDescription = null,
+                            tint = SleekOnSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Choose files first, connect after", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SleekOnSurface, modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SleekOnSurfaceVariant.copy(alpha = 0.5f))
                     }
                 }
 
@@ -228,52 +237,91 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun DeviceSummaryCard(
+private fun DeviceIdentityStrip(
     deviceName: String,
     sentCount: Int,
     receivedCount: Int,
     totalBytes: Long
 ) {
-    androidx.compose.material3.Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = SleekPrimaryContainer,
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "THIS DEVICE",
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = SleekOnPrimaryContainer.copy(alpha = 0.7f),
-                letterSpacing = 1.sp
+                color = SleekOnSurfaceVariant.copy(alpha = 0.6f),
+                letterSpacing = 1.2.sp
             )
-            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = deviceName,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = SleekOnPrimaryContainer
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black,
+                color = SleekOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+        }
+        StatChip(value = "$sentCount", label = "sent")
+        Spacer(modifier = Modifier.width(8.dp))
+        StatChip(value = "$receivedCount", label = "recv")
+        Spacer(modifier = Modifier.width(8.dp))
+        StatChip(value = formatBytes(totalBytes), label = "total")
+    }
+}
 
-            Spacer(modifier = Modifier.height(16.dp))
+@Composable
+private fun StatChip(value: String, label: String) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(SleekSurfaceContainer)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+        Text(label, fontSize = 9.sp, color = SleekOnSurfaceVariant)
+    }
+}
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("$sentCount", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekOnPrimaryContainer)
-                    Text("Sent", fontSize = 12.sp, color = SleekOnPrimaryContainer.copy(alpha = 0.7f))
-                }
-                Column {
-                    Text("$receivedCount", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekOnPrimaryContainer)
-                    Text("Received", fontSize = 12.sp, color = SleekOnPrimaryContainer.copy(alpha = 0.7f))
-                }
-                Column {
-                    Text(formatBytes(totalBytes), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekOnPrimaryContainer)
-                    Text("Transferred", fontSize = 12.sp, color = SleekOnPrimaryContainer.copy(alpha = 0.7f))
-                }
-            }
+/**
+ * The Send/Receive bento tiles - large, side-by-side, tappable panels replacing the old
+ * three-row grouped list. This is the single biggest visible break from the inherited
+ * layout: two deliberate, distinct destinations instead of a generic settings-style list.
+ */
+@Composable
+private fun HeroActionTile(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    containerColor: Color,
+    onColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(containerColor)
+            .clickable { onClick() }
+            .padding(18.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(onColor.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = onColor, modifier = Modifier.size(20.dp))
+        }
+        Column {
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = onColor)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(subtitle, fontSize = 12.sp, color = onColor.copy(alpha = 0.75f), maxLines = 2)
         }
     }
 }
@@ -295,47 +343,6 @@ private fun DashboardSection(
         GroupedListColumn {
             content()
         }
-    }
-}
-
-@Composable
-private fun QuickActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    iconTint: Color,
-    iconBg: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = title, tint = iconTint, modifier = Modifier.size(22.dp))
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
-                Text(subtitle, fontSize = 12.sp, color = SleekOnSurfaceVariant)
-            }
-        }
-        Icon(
-            Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = SleekOnSurfaceVariant.copy(alpha = 0.5f)
-        )
     }
 }
 
