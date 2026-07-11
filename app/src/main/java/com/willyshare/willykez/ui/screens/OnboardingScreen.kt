@@ -34,8 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.willyshare.willykez.ui.AuroraBackground
 import com.willyshare.willykez.ui.PulseIcons
-import com.willyshare.willykez.ui.theme.SleekBg
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekPrimary
@@ -57,7 +57,7 @@ private val pages = listOf(
     OnboardPage(
         PulseIcons.Broadcasting,
         "Real device-to-device discovery",
-        "Pulse finds nearby phones over Wi-Fi Direct, just like Quick Share \u2014 no internet, no cables."
+        "Sharing Plus finds nearby phones over Wi-Fi Direct, just like Quick Share \u2014 no internet, no cables."
     ),
     OnboardPage(
         PulseIcons.Device,
@@ -71,10 +71,10 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
 
+    AuroraBackground(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(SleekBg)
             .statusBarsPadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -208,5 +208,6 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
                 )
             }
         }
+    }
     }
 }

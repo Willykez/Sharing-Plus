@@ -23,10 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.willyshare.willykez.ui.AuroraBackground
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.PulseViewModel
 import com.willyshare.willykez.ui.SleekBottomNav
-import com.willyshare.willykez.ui.theme.SleekBg
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 
@@ -49,6 +49,7 @@ fun HistoryScreen(
         },
         containerColor = androidx.compose.ui.graphics.Color.Transparent
     ) { innerPadding ->
+        AuroraBackground(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
             InPageHeader(
                 title = "Transfer History",
@@ -139,6 +140,7 @@ fun HistoryScreen(
             item {
                 Spacer(modifier = Modifier.height(20.dp))
             }
+        }
         }
         }
     }

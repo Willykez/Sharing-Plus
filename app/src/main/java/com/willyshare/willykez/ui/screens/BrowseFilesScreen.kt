@@ -57,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.willyshare.willykez.net.LocalFileNode
 import com.willyshare.willykez.net.StorageRoot
+import com.willyshare.willykez.ui.AuroraBackground
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.PulseViewModel
 import com.willyshare.willykez.ui.formatBytes
@@ -103,7 +104,7 @@ fun BrowseFilesScreen(
     val currentTitle = pathStack.lastOrNull()?.substringAfterLast('/') ?: "Browse folders"
 
     Scaffold(containerColor = androidx.compose.ui.graphics.Color.Transparent) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        AuroraBackground(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 InPageHeader(
                     title = currentTitle,

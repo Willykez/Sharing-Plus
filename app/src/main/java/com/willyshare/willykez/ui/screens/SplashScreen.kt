@@ -33,12 +33,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.willyshare.willykez.ui.theme.CyanBright
 import com.willyshare.willykez.ui.theme.SleekBg
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekPrimary
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
-import com.willyshare.willykez.ui.theme.VioletAccent
+import com.willyshare.willykez.ui.theme.SleekSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -93,17 +92,17 @@ fun SplashScreen(onFinish: () -> Unit) {
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
-                text = "SPARKS",
-                fontSize = 32.sp,
+                text = "SHARING+",
+                fontSize = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = SleekPrimary,
-                letterSpacing = 8.sp
+                letterSpacing = 4.sp
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "File Sharing Redefined",
+                text = "Peer-to-peer, no cloud, no cables",
                 fontSize = 14.sp,
                 color = SleekOnSurfaceVariant
             )
@@ -125,7 +124,7 @@ fun SplashScreen(onFinish: () -> Unit) {
                         .clip(RoundedCornerShape(999.dp))
                         .background(
                             Brush.horizontalGradient(
-                                listOf(VioletAccent, CyanBright)
+                                listOf(SleekPrimary, SleekSecondary)
                             )
                         )
                 )
@@ -134,7 +133,7 @@ fun SplashScreen(onFinish: () -> Unit) {
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "INITIALIZING ROOM STORAGE...",
+                text = "ESTABLISHING SECURE LINK\u2026",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = SleekOnSurfaceVariant.copy(alpha = 0.7f),

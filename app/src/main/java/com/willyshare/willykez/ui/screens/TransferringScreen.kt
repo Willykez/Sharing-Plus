@@ -37,12 +37,11 @@ import com.willyshare.willykez.ui.GlassCard
 import com.willyshare.willykez.ui.PulseViewModel
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.formatBytes
-import com.willyshare.willykez.ui.theme.CyanBright
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekOutline
 import com.willyshare.willykez.ui.theme.SleekPrimary
-import com.willyshare.willykez.ui.theme.VioletAccent
+import com.willyshare.willykez.ui.theme.SleekSecondary
 
 @Composable
 fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
@@ -109,11 +108,12 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
 
                 val outlineColor = SleekOutline
                 val primaryColor = SleekPrimary
+                val secondaryColor = SleekSecondary
                 Box(modifier = Modifier.size(220.dp).padding(20.dp), contentAlignment = Alignment.Center) {
                     Canvas(modifier = Modifier.size(180.dp)) {
                         drawCircle(color = outlineColor.copy(alpha = 0.25f), style = Stroke(width = 14.dp.toPx()))
                         drawArc(
-                            brush = Brush.sweepGradient(listOf(VioletAccent, primaryColor, CyanBright, VioletAccent)),
+                            brush = Brush.sweepGradient(listOf(primaryColor, secondaryColor, primaryColor)),
                             startAngle = -90f, sweepAngle = fraction * 360f, useCenter = false,
                             style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
                         )

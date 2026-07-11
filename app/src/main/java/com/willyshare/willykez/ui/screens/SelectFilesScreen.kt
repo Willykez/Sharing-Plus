@@ -78,10 +78,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.willyshare.willykez.data.FileItemEntity
+import com.willyshare.willykez.ui.AuroraBackground
 import com.willyshare.willykez.ui.PulseViewModel
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.formatBytes
-import com.willyshare.willykez.ui.theme.SleekBg
 import com.willyshare.willykez.ui.theme.SleekCard
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
@@ -160,7 +160,7 @@ fun SelectFilesScreen(
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        AuroraBackground(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             if (!permissionsState.allPermissionsGranted) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     InPageHeader(
@@ -184,7 +184,7 @@ fun SelectFilesScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "Pulse needs access to your photos, videos, audio and documents to let you pick what to send.",
+                        "Sharing Plus needs access to your photos, videos, audio and documents to let you pick what to send.",
                         fontSize = 13.sp,
                         color = SleekOnSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -203,7 +203,7 @@ fun SelectFilesScreen(
                     }
                 }
                 }
-                return@Box
+                return@AuroraBackground
             }
             Column(modifier = Modifier.fillMaxSize()) {
                 InPageHeader(

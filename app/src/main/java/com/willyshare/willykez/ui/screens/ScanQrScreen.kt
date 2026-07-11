@@ -97,7 +97,7 @@ fun ScanQrScreen(
                                 viewModel.startPullSession { }
                                 onNavigate("receive")
                             } else {
-                                scanResultMessage = "That QR isn't a valid Pulse pairing code."
+                                scanResultMessage = "That QR isn't a valid Sharing Plus pairing code."
                                 isProcessing = false
                             }
                         }
@@ -108,8 +108,24 @@ fun ScanQrScreen(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(240.dp)
-                        .border(3.dp, SleekPrimary, RoundedCornerShape(24.dp))
-                )
+                ) {
+                    val bracketColor = SleekPrimary
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val len = 32.dp.toPx()
+                        val stroke = 3.dp.toPx()
+                        val w = size.width; val h = size.height
+                        val corners = listOf(
+                            Triple(androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(len, 0f), androidx.compose.ui.geometry.Offset(0f, len)),
+                            Triple(androidx.compose.ui.geometry.Offset(w, 0f), androidx.compose.ui.geometry.Offset(w - len, 0f), androidx.compose.ui.geometry.Offset(w, len)),
+                            Triple(androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(len, h), androidx.compose.ui.geometry.Offset(0f, h - len)),
+                            Triple(androidx.compose.ui.geometry.Offset(w, h), androidx.compose.ui.geometry.Offset(w - len, h), androidx.compose.ui.geometry.Offset(w, h - len))
+                        )
+                        corners.forEach { (corner, horiz, vert) ->
+                            drawLine(color = bracketColor, start = corner, end = horiz, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                            drawLine(color = bracketColor, start = corner, end = vert, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                        }
+                    }
+                }
 
                 InPageHeader(
                     title = "Scan pairing QR",
@@ -152,7 +168,7 @@ fun ScanQrScreen(
                     Text("Camera permission needed", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "Pulse needs camera access to scan pairing QR codes.",
+                        "Sharing Plus needs camera access to scan pairing QR codes.",
                         fontSize = 13.sp,
                         color = SleekOnSurfaceVariant,
                         textAlign = TextAlign.Center

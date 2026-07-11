@@ -51,13 +51,12 @@ import com.willyshare.willykez.ui.RadarPulseRing
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.SleekFloatingPillButton
 import com.willyshare.willykez.ui.formatBytes
-import com.willyshare.willykez.ui.theme.CyanBright
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekOutline
 import com.willyshare.willykez.ui.theme.SleekPrimary
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
-import com.willyshare.willykez.ui.theme.VioletAccent
+import com.willyshare.willykez.ui.theme.SleekSecondary
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -115,7 +114,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                             Text("Nearby device permission needed", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                "Pulse needs this permission so nearby senders can find and connect to this device.",
+                                "Sharing Plus needs this permission so nearby senders can find and connect to this device.",
                                 fontSize = 13.sp, color = SleekOnSurfaceVariant, textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(16.dp))
@@ -135,24 +134,46 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                         Spacer(modifier = Modifier.height(20.dp))
                         val outlineColor = SleekOutline
                         val primaryColor = SleekPrimary
+                        val secondaryColor = SleekSecondary
                         val fraction = if (progress.overallTotal > 0) (progress.overallBytes.toFloat() / progress.overallTotal.toFloat()).coerceIn(0f, 1f) else 0f
 
+                        if (!senderConnected) {
+                            // Same horizontal status-strip language as the Send screen's
+                            // discovery state, instead of a big centered hero circle - the two
+                            // screens now share one consistent "looking for a peer" idiom.
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    RadarPulseRing(76, 0)
+                                    RadarPulseRing(58, 700)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(SleekPrimaryContainer)
+                                            .border(1.5.dp, SleekPrimary.copy(alpha = 0.5f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) { Icon(com.willyshare.willykez.ui.PulseIcons.SignalBars, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(22.dp)) }
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text("Waiting to receive", fontSize = 16.sp, fontWeight = FontWeight.Black, color = SleekOnSurface)
+                                    Text("Visible as \u201C$deviceName\u201D", fontSize = 11.sp, color = SleekOnSurfaceVariant)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                "Ask the sender to pick \u201C$deviceName\u201D from their Send screen,\nor scan their QR code.",
+                                fontSize = 13.sp, color = SleekOnSurfaceVariant, textAlign = TextAlign.Center
+                            )
+                        } else {
                         Box(modifier = Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-                            if (!senderConnected) {
-                                RadarPulseRing(200, 0); RadarPulseRing(150, 700); RadarPulseRing(100, 1400)
-                                Box(
-                                    modifier = Modifier
-                                        .size(96.dp)
-                                        .clip(CircleShape)
-                                        .background(SleekPrimaryContainer)
-                                        .border(2.dp, SleekPrimary, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) { Icon(com.willyshare.willykez.ui.PulseIcons.SignalBars, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(42.dp)) }
-                            } else {
                                 Canvas(modifier = Modifier.size(180.dp)) {
                                     drawCircle(color = outlineColor.copy(alpha = 0.25f), style = Stroke(width = 14.dp.toPx()))
                                     drawArc(
-                                        brush = Brush.sweepGradient(listOf(VioletAccent, primaryColor, CyanBright, VioletAccent)),
+                                        brush = Brush.sweepGradient(listOf(primaryColor, secondaryColor, primaryColor)),
                                         startAngle = -90f, sweepAngle = fraction * 360f, useCenter = false,
                                         style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
                                     )
@@ -161,13 +182,11 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                                     Text("${(fraction * 100).toInt()}%", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, color = SleekPrimary)
                                     Text("${formatBytes(progress.overallSpeed.toLong())}/s", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SleekOnSurfaceVariant)
                                 }
-                            }
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = when {
-                                !senderConnected -> "Waiting to receive"
                                 progress.isComplete -> "Transfer complete"
                                 progress.overallTotal > 0 -> "Receiving\u2026"
                                 else -> "Connected"
@@ -175,12 +194,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                             fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        if (!senderConnected) {
-                            Text(
-                                "Ask the sender to pick \u201C$deviceName\u201D from their Send screen,\nor scan their QR code.",
-                                fontSize = 13.sp, color = SleekOnSurfaceVariant, textAlign = TextAlign.Center
-                            )
-                        } else if (progress.overallTotal == 0L) {
+                        if (progress.overallTotal == 0L) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
@@ -194,6 +208,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                                     fontSize = 13.sp, color = SleekOnSurfaceVariant, textAlign = TextAlign.Center
                                 )
                             }
+                        }
                         }
 
                         progress.error?.let {

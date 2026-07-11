@@ -31,7 +31,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -86,17 +89,37 @@ fun MyQrScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                         value = QrPairing.generateQrBitmap(currentPayload)
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(260.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color.White)
-                            .border(1.dp, SleekOutline.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        qrBitmap?.let {
-                            Image(bitmap = it.asImageBitmap(), contentDescription = "Pairing QR code", modifier = Modifier.fillMaxSize())
+                    val primaryDynamic = SleekPrimary
+                    Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
+                        // Corner brackets - a scanner-viewfinder motif instead of a plain frame,
+                        // reinforcing "this is meant to be scanned" at a glance.
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                            val len = 28.dp.toPx()
+                            val stroke = 3.dp.toPx()
+                            val inset = 4.dp.toPx()
+                            val w = size.width; val h = size.height
+                            val corners = listOf(
+                                Triple(Offset(inset, inset), Offset(inset + len, inset), Offset(inset, inset + len)),
+                                Triple(Offset(w - inset, inset), Offset(w - inset - len, inset), Offset(w - inset, inset + len)),
+                                Triple(Offset(inset, h - inset), Offset(inset + len, h - inset), Offset(inset, h - inset - len)),
+                                Triple(Offset(w - inset, h - inset), Offset(w - inset - len, h - inset), Offset(w - inset, h - inset - len))
+                            )
+                            corners.forEach { (corner, horiz, vert) ->
+                                drawLine(color = primaryDynamic, start = corner, end = horiz, strokeWidth = stroke, cap = StrokeCap.Round)
+                                drawLine(color = primaryDynamic, start = corner, end = vert, strokeWidth = stroke, cap = StrokeCap.Round)
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(232.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            qrBitmap?.let {
+                                Image(bitmap = it.asImageBitmap(), contentDescription = "Pairing QR code", modifier = Modifier.fillMaxSize())
+                            }
                         }
                     }
 
@@ -122,7 +145,14 @@ fun MyQrScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(SleekCard)
-                            .border(1.dp, SleekOutline.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .drawBehind {
+                                drawLine(
+                                    color = primaryDynamic.copy(alpha = if (highSpeedMode) 0.7f else 0.2f),
+                                    start = Offset(size.width * 0.05f, 0f),
+                                    end = Offset(size.width * 0.35f, 0f),
+                                    strokeWidth = 2.5.dp.toPx()
+                                )
+                            }
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -151,30 +152,45 @@ fun SendScreen(
                         )
                     }
 
-                    Box(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isDiscovering) {
-                            RadarPulseRing(160, 0)
-                            RadarPulseRing(115, 600)
-                            RadarPulseRing(75, 1200)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(SleekPrimaryContainer)
-                                .border(2.dp, SleekPrimary, RoundedCornerShape(20.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(contentAlignment = Alignment.Center) {
                             if (isDiscovering) {
-                                CircularProgressIndicator(color = SleekPrimary, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
-                            } else {
-                                Icon(com.willyshare.willykez.ui.PulseIcons.Broadcasting, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(30.dp))
+                                RadarPulseRing(76, 0)
+                                RadarPulseRing(58, 700)
                             }
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(SleekPrimaryContainer)
+                                    .border(1.5.dp, SleekPrimary.copy(alpha = 0.5f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isDiscovering) {
+                                    CircularProgressIndicator(color = SleekPrimary, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                                } else {
+                                    Icon(com.willyshare.willykez.ui.PulseIcons.Broadcasting, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(22.dp))
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = if (peers.isEmpty()) (if (isDiscovering) "Scanning\u2026" else "No devices yet") else "${peers.size} device${if (peers.size == 1) "" else "s"} nearby",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = SleekOnSurface
+                            )
+                            Text(
+                                text = "Wi-Fi Direct \u00B7 broadcasting as visible",
+                                fontSize = 11.sp,
+                                color = SleekOnSurfaceVariant
+                            )
                         }
                     }
 
@@ -204,7 +220,7 @@ fun SendScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Make sure Wi-Fi is on and the receiver has Pulse open on the Receive screen.",
+                                text = "Make sure Wi-Fi is on and the receiver has Sharing Plus open on the Receive screen.",
                                 fontSize = 12.sp,
                                 color = SleekOnSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 32.dp)
@@ -257,12 +273,20 @@ fun SendScreen(
 
 @Composable
 private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .background(SleekCard)
-            .border(1.dp, SleekOutline.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .drawBehind {
+                drawLine(
+                    color = SleekPrimary.copy(alpha = 0.5f),
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.05f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.4f, 0f),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
             .clickable(enabled = !isConnecting) { onClick() }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -340,7 +364,7 @@ private fun PermissionRationaleCard(showSettingsHint: Boolean, onRequest: () -> 
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            "Pulse needs this permission to discover nearby devices over Wi-Fi Direct.",
+            "Sharing Plus needs this permission to discover nearby devices over Wi-Fi Direct.",
             fontSize = 13.sp,
             color = SleekOnSurfaceVariant
         )

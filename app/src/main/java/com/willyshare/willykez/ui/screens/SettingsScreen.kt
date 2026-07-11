@@ -62,12 +62,12 @@ import com.willyshare.willykez.ui.GroupedListItem
 import com.willyshare.willykez.ui.PulseIcons
 import com.willyshare.willykez.ui.PulseViewModel
 import com.willyshare.willykez.ui.SleekBottomNav
+import com.willyshare.willykez.ui.AuroraBackground
 import com.willyshare.willykez.ui.InPageHeader
 import com.willyshare.willykez.ui.formatBytes
 import com.willyshare.willykez.ui.groupPositionFor
 import com.willyshare.willykez.ui.settings.AppearanceSection
 import com.willyshare.willykez.ui.theme.LocalSnackbarHostState
-import com.willyshare.willykez.ui.theme.SleekBg
 import com.willyshare.willykez.ui.theme.LocalThemePrefs
 import com.willyshare.willykez.ui.theme.LocalThemeState
 import com.willyshare.willykez.ui.theme.SleekOnSurface
@@ -117,6 +117,7 @@ fun SettingsScreen(
         },
         containerColor = Color.Transparent
     ) { innerPadding ->
+        AuroraBackground(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
             InPageHeader(title = "Settings", showBack = true, onBack = { onNavigate("dashboard") })
             LazyColumn(
@@ -294,6 +295,7 @@ fun SettingsScreen(
             item {
                 Spacer(modifier = Modifier.height(24.dp))
             }
+        }
         }
         }
     }
