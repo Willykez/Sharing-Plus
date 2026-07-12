@@ -31,6 +31,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,13 +65,14 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.shouldShowRationale
 
-@OptIn(ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalPermissionsApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
     val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
     } else listOf(Manifest.permission.ACCESS_FINE_LOCATION)
     val permissionsState = rememberMultiplePermissionsState(requiredPermissions)
+    var showScanSheet by remember { mutableStateOf(false) }
 
     val isListening by viewModel.isListening.collectAsState()
     val senderConnected by viewModel.senderConnected.collectAsState()
@@ -238,7 +242,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                     SleekFloatingPillButton(
                         text = "Scan QR",
                         icon = Icons.Default.QrCodeScanner,
-                        onClick = { onNavigate("scan_qr") },
+                        onClick = { showScanSheet = true },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 24.dp)
@@ -246,5 +250,13 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                 }
             }
         }
+    }
+
+    if (showScanSheet) {
+        ScanQrBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showScanSheet = false },
+            onNavigate = onNavigate
+        )
     }
 }

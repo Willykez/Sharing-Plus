@@ -14,17 +14,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +64,77 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 
+/**
+ * Bottom-sheet form of the scanner - mirrors MyQrBottomSheet on the other side of this same
+ * interaction. Expanded near-full-height (camera previews need real room to be usable), rounded
+ * top corners over a dark scrim, dismissible by swipe. This is what Receive now actually opens.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@Composable
+fun ScanQrBottomSheet(
+    viewModel: PulseViewModel,
+    onDismiss: () -> Unit,
+    onNavigate: (String) -> Unit,
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+) {
+    val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
+    var scanResultMessage by remember { mutableStateOf<String?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!cameraPermission.status.isGranted) cameraPermission.launchPermissionRequest()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.Black,
+        dragHandle = null
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+            if (cameraPermission.status.isGranted) {
+                CameraPreviewWithScanner(
+                    isProcessing = isProcessing,
+                    onDecoded = { raw ->
+                        if (!isProcessing) {
+                            isProcessing = true
+                            val ok = viewModel.applyScannedPayload(raw)
+                            if (ok) {
+                                viewModel.startPullSession { }
+                                onDismiss()
+                                onNavigate("receive")
+                            } else {
+                                scanResultMessage = "That QR isn't a valid Sharing Plus pairing code."
+                                isProcessing = false
+                            }
+                        }
+                    }
+                )
+                ScanViewfinderOverlay()
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = scanResultMessage ?: "Point your camera at the sender's pairing QR code",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                CameraPermissionDeniedContent(cameraPermission = cameraPermission, darkBackground = true)
+            }
+        }
+    }
+}
+
+/** Full-page form, kept for the "scan_qr" route in case something still deep-links to it. */
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun ScanQrScreen(
@@ -103,29 +180,7 @@ fun ScanQrScreen(
                         }
                     }
                 )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(240.dp)
-                ) {
-                    val bracketColor = SleekPrimary
-                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                        val len = 32.dp.toPx()
-                        val stroke = 3.dp.toPx()
-                        val w = size.width; val h = size.height
-                        val corners = listOf(
-                            Triple(androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(len, 0f), androidx.compose.ui.geometry.Offset(0f, len)),
-                            Triple(androidx.compose.ui.geometry.Offset(w, 0f), androidx.compose.ui.geometry.Offset(w - len, 0f), androidx.compose.ui.geometry.Offset(w, len)),
-                            Triple(androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(len, h), androidx.compose.ui.geometry.Offset(0f, h - len)),
-                            Triple(androidx.compose.ui.geometry.Offset(w, h), androidx.compose.ui.geometry.Offset(w - len, h), androidx.compose.ui.geometry.Offset(w, h - len))
-                        )
-                        corners.forEach { (corner, horiz, vert) ->
-                            drawLine(color = bracketColor, start = corner, end = horiz, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                            drawLine(color = bracketColor, start = corner, end = vert, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                        }
-                    }
-                }
+                ScanViewfinderOverlay()
 
                 InPageHeader(
                     title = "Scan pairing QR",
@@ -156,33 +211,77 @@ fun ScanQrScreen(
                     onBack = { onNavigate("receive") },
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(com.willyshare.willykez.ui.PulseIcons.Camera, contentDescription = null, tint = SleekOnSurfaceVariant, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Camera permission needed", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Sharing Plus needs camera access to scan pairing QR codes.",
-                        fontSize = 13.sp,
-                        color = SleekOnSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { cameraPermission.launchPermissionRequest() },
-                        shape = RoundedCornerShape(999.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SleekPrimary)
-                    ) {
-                        Text("Allow camera", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
+                CameraPermissionDeniedContent(cameraPermission = cameraPermission, darkBackground = false)
+            }
+        }
+    }
+}
+
+/** The corner-bracket scanner viewfinder - shared by the sheet and the full-page fallback. */
+@Composable
+private fun ScanViewfinderOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(240.dp)
+        ) {
+            val bracketColor = SleekPrimary
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val len = 32.dp.toPx()
+                val stroke = 3.dp.toPx()
+                val w = size.width; val h = size.height
+                val corners = listOf(
+                    Triple(androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(len, 0f), androidx.compose.ui.geometry.Offset(0f, len)),
+                    Triple(androidx.compose.ui.geometry.Offset(w, 0f), androidx.compose.ui.geometry.Offset(w - len, 0f), androidx.compose.ui.geometry.Offset(w, len)),
+                    Triple(androidx.compose.ui.geometry.Offset(0f, h), androidx.compose.ui.geometry.Offset(len, h), androidx.compose.ui.geometry.Offset(0f, h - len)),
+                    Triple(androidx.compose.ui.geometry.Offset(w, h), androidx.compose.ui.geometry.Offset(w - len, h), androidx.compose.ui.geometry.Offset(w, h - len))
+                )
+                corners.forEach { (corner, horiz, vert) ->
+                    drawLine(color = bracketColor, start = corner, end = horiz, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawLine(color = bracketColor, start = corner, end = vert, strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                 }
             }
+        }
+    }
+}
+
+/** Shared "camera permission needed" state - identical content, only the surrounding
+ *  container differs (dark sheet vs. normal page background) between the two callers. */
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun CameraPermissionDeniedContent(
+    cameraPermission: com.google.accompanist.permissions.PermissionState,
+    darkBackground: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        val textColor = if (darkBackground) Color.White else SleekOnSurfaceVariant
+        Icon(com.willyshare.willykez.ui.PulseIcons.Camera, contentDescription = null, tint = textColor, modifier = Modifier.size(40.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Camera permission needed", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (darkBackground) Color.White else Color.Unspecified)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "Sharing Plus needs camera access to scan pairing QR codes.",
+            fontSize = 13.sp,
+            color = textColor,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { cameraPermission.launchPermissionRequest() },
+            shape = RoundedCornerShape(999.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SleekPrimary)
+        ) {
+            Text("Allow camera", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.willyshare.willykez.ui.screens
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,7 +96,12 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            InPageHeader(title = "Sharing Plus", subtitle = deviceName)
+            InPageHeader(
+                title = "Sharing Plus",
+                subtitle = deviceName,
+                rightIcon = Icons.Default.Settings,
+                onRightClick = { onNavigate("settings") }
+            )
 
             LazyColumn(
                 modifier = Modifier
@@ -144,11 +152,20 @@ fun DashboardScreen(
                 }
 
                 item {
+                    val accentColor = SleekPrimary
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .background(SleekSurfaceContainer)
+                            .drawBehind {
+                                drawLine(
+                                    color = accentColor.copy(alpha = 0.35f),
+                                    start = androidx.compose.ui.geometry.Offset(size.width * 0.04f, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(size.width * 0.3f, 0f),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            }
                             .clickable { onNavigate("select") }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -301,6 +318,15 @@ private fun HeroActionTile(
     onColor: Color,
     onClick: () -> Unit
 ) {
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "hero_pulse")
+    val glowAlpha by pulse.animateFloat(
+        initialValue = 0.10f, targetValue = 0.22f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
@@ -309,14 +335,22 @@ private fun HeroActionTile(
             .padding(18.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(onColor.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = title, tint = onColor, modifier = Modifier.size(20.dp))
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(onColor.copy(alpha = glowAlpha))
+            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(onColor.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = title, tint = onColor, modifier = Modifier.size(20.dp))
+            }
         }
         Column {
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = onColor)
