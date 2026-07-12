@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
@@ -35,7 +36,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -81,6 +85,7 @@ import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
  * cards per row, with section headers as small caps labels above each group -
  * matches the reference app's Settings screen structure.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: PulseViewModel,
@@ -92,6 +97,7 @@ fun SettingsScreen(
     var clearHistoryExpanded by remember { mutableStateOf(false) }
     val themePrefs = LocalThemePrefs.current
     val themeState = LocalThemeState.current
+    var showAppearanceSheet by remember { mutableStateOf(false) }
     val snackbarHostState = LocalSnackbarHostState.current
     val context = LocalContext.current
 
@@ -189,11 +195,23 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(title = "APPEARANCE") {
-                    AppearanceSection(
-                        prefs = themePrefs,
-                        state = themeState,
-                        snackbarHostState = snackbarHostState,
-                    )
+                    GroupedListItem(position = GroupPosition.ONLY) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showAppearanceSheet = true }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Palette, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Appearance", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+                                Text("Theme, colors \u0026 style", fontSize = 12.sp, color = SleekOnSurfaceVariant)
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SleekOnSurfaceVariant.copy(alpha = 0.5f))
+                        }
+                    }
                 }
             }
 
@@ -297,6 +315,20 @@ fun SettingsScreen(
             }
         }
         }
+        }
+    }
+
+    if (showAppearanceSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAppearanceSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            AppearanceSection(
+                prefs = themePrefs,
+                state = themeState,
+                snackbarHostState = snackbarHostState,
+            )
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

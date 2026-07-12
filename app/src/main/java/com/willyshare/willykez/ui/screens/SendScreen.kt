@@ -86,6 +86,7 @@ fun SendScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var connectingTo by remember { mutableStateOf<String?>(null) }
     var wifiEnabled by remember { mutableStateOf(WifiEnableHelper.isWifiEnabled(context)) }
+    var showQrSheet by remember { mutableStateOf(false) }
 
     // Re-check whenever the screen resumes (e.g. coming back from the Wi-Fi panel/Settings).
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
@@ -260,7 +261,7 @@ fun SendScreen(
                     SleekFloatingPillButton(
                         text = "Show my QR",
                         icon = Icons.Default.QrCode2,
-                        onClick = { onNavigate("my_qr") },
+                        onClick = { showQrSheet = true },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 24.dp)
@@ -269,11 +270,20 @@ fun SendScreen(
             }
         }
     }
+
+    if (showQrSheet) {
+        MyQrBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showQrSheet = false },
+            onNavigate = onNavigate
+        )
+    }
 }
 
 @Composable
 private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
+    val accentColor = SleekPrimary
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -281,7 +291,7 @@ private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, onClick: () ->
             .background(SleekCard)
             .drawBehind {
                 drawLine(
-                    color = SleekPrimary.copy(alpha = 0.5f),
+                    color = accentColor.copy(alpha = 0.5f),
                     start = androidx.compose.ui.geometry.Offset(size.width * 0.05f, 0f),
                     end = androidx.compose.ui.geometry.Offset(size.width * 0.4f, 0f),
                     strokeWidth = 2.dp.toPx()
