@@ -178,6 +178,37 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                     targetPort.value = TRANSFER_PORT
                     targetSource.value = TargetSource.WIFI_DIRECT
                     NotificationHelper.notifyConnectionStatus(appContext, connected = true, deviceName = targetName.value)
+
+                    // Real gotcha: Wi-Fi Direct's Group Owner negotiation is a genuine
+                    // two-way negotiation. Setting groupOwnerIntent low is only a hint - on
+                    // some chipsets/OEM pairs, or just due to the tie-breaker bit, the
+                    // device that TAPPED a peer to connect (expecting to stay Client and
+                    // push its cart) can end up as Group Owner instead, while the OTHER
+                    // device becomes Client. Before this fix, that flip meant: the intended
+                    // sender's targetIp never got set (see the isGroupOwner branch below -
+                    // there wasn't one), and the intended receiver had targetIp set but
+                    // nothing telling it to do anything with it. Both sides would just sit
+                    // there looking "stuck," with zero feedback, indefinitely.
+                    //
+                    // Fix: whichever device actually lands as Client checks whether IT has
+                    // a cart queued. If yes, push (unchanged, the common/expected path). If
+                    // no, it's not the intended sender - auto-pull from the Group Owner
+                    // instead, exactly like scanning a QR would. This makes the outcome
+                    // self-correcting no matter which way the P2P negotiation actually goes.
+                    //
+                    // Scoped away from the QR pull flow: that flow also forms a real P2P
+                    // group (Fast Connect), which fires this exact same collector once the
+                    // join completes - but ScanQrBottomSheet already calls startPullSession()
+                    // itself the moment the scan succeeds. pendingQrJoin covers that whole
+                    // window so this doesn't race it into a second, duplicate pull attempt.
+                    // transferJob == null is a second guard: WIFI_P2P_CONNECTION_CHANGED_ACTION
+                    // can legitimately fire more than once for what's logically the same
+                    // "still connected, nothing changed" state, and startPullSession() itself
+                    // has no re-entry guard of its own - without this, a re-fire mid-pull
+                    // would silently start a second, overlapping attempt at the same target.
+                    if (!hasPendingCart.value && !pendingQrJoin && transferJob == null) {
+                        startPullSession { }
+                    }
                 }
             }
         }
@@ -410,8 +441,10 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         targetPort.value = parsed.port
         targetSource.value = TargetSource.QR_PAIR
         if (parsed.isFastConnect && wifiDirect.isFastConnectSupported) {
+            pendingQrJoin = true
             wifiDirect.joinFastGroup(parsed.fastConnectNetworkName!!, parsed.fastConnectPassphrase!!) { _, message ->
                 fastConnectStatus.value = message
+                pendingQrJoin = false
             }
         }
         return true
@@ -503,6 +536,14 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The in-flight send coroutine, if any - kept so [cancelTransferSession] can actually stop it. */
     private var transferJob: kotlinx.coroutines.Job? = null
+    /** True for the duration of a QR Fast Connect join attempt (applyScannedPayload to its
+     *  own completion callback). Needed because the connectionInfo collector's Client
+     *  branch unconditionally overwrites targetSource to WIFI_DIRECT the moment ANY group
+     *  forms - including one this device joined via a scanned QR - so targetSource itself
+     *  can't be used there to tell a QR join apart from a peer-list connect. Without this,
+     *  the auto-pull fix below would race ScanQrBottomSheet's own startPullSession() call
+     *  and fire a second, duplicate pull attempt at the same target. */
+    private var pendingQrJoin = false
 
     /** The full pending cart right now, from every source (MediaStore picks, folder browser,
      *  and files handed in via another app's share sheet) - used by both the normal push

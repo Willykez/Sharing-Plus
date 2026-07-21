@@ -83,6 +83,7 @@ fun SendScreen(
     val targetIp by viewModel.targetIp.collectAsState()
     val targetSource by viewModel.targetSource.collectAsState()
     val hasPendingCart by viewModel.hasPendingCart.collectAsState()
+    val senderConnected by viewModel.senderConnected.collectAsState()
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var connectingTo by remember { mutableStateOf<String?>(null) }
     var wifiEnabled by remember { mutableStateOf(WifiEnableHelper.isWifiEnabled(context)) }
@@ -107,8 +108,17 @@ fun SendScreen(
     }
 
     LaunchedEffect(permissionsState.allPermissionsGranted) {
+        // Android's discoverPeers() is a ONE-SHOT call - the OS silently stops scanning
+        // after roughly two minutes with no callback telling the app it happened. Without
+        // this loop, isDiscovering would keep showing "Scanning..." indefinitely while
+        // nothing was actually happening, and any device that walked into range after that
+        // ~2 minute window would simply never be found. Re-issuing the call periodically
+        // is the standard workaround; it's a cheap no-op if a scan is already in progress.
         if (permissionsState.allPermissionsGranted) {
-            viewModel.startPeerDiscovery()
+            while (true) {
+                viewModel.startPeerDiscovery()
+                kotlinx.coroutines.delay(25_000)
+            }
         }
     }
 
@@ -124,6 +134,21 @@ fun SendScreen(
             // target is found. Otherwise, this is the original "connect first" flow: go pick
             // files now that we know who we're sending to.
             onNavigate(if (hasPendingCart) "transfer" else "select")
+        }
+    }
+
+    LaunchedEffect(senderConnected, hasPendingCart, targetIp) {
+        // Covers the Group Owner role-flip: this device tapped a peer expecting to end up
+        // as the Client (and get targetIp set above), but Wi-Fi Direct's negotiation can
+        // still land it as Group Owner instead. When that happens targetIp never gets set
+        // here, so without this, the screen just sits on the peer list looking stuck with
+        // zero feedback - the connection actually succeeded, it just formed the "other way
+        // around." senderConnected firing while we still have a cart and never got our own
+        // targetIp is the signal that someone (now the real Client) connected to us and, per
+        // the matching fix in PulseViewModel, is about to pull our queued cart - so follow
+        // the exact same path MyQrScreen uses and go watch it happen.
+        if (senderConnected && hasPendingCart && targetIp == null) {
+            onNavigate("transfer")
         }
     }
 

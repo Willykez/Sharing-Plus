@@ -1,19 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Sharing Plus is a "no cloud" peer-to-peer app - the transfer history database records
+   who you sent/received files with, file names, sizes, and timestamps. That's exactly the
+   kind of thing this app's whole premise says never leaves the device, so it's explicitly
+   excluded here rather than silently riding along in Android's default full-app cloud
+   backup (the un-customized template previously left this file effectively empty, meaning
+   every table in this database, Room WAL/SHM files included, was being backed up by default).
+   Theme/onboarding preferences are left in, since restoring those on a new device is a
+   normal, wanted convenience with no privacy downside.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="database" path="pulse_database" />
+        <exclude domain="database" path="pulse_database-wal" />
+        <exclude domain="database" path="pulse_database-shm" />
+        <exclude domain="database" path="pulse_database-journal" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="database" path="pulse_database" />
+        <exclude domain="database" path="pulse_database-wal" />
+        <exclude domain="database" path="pulse_database-shm" />
+        <exclude domain="database" path="pulse_database-journal" />
     </device-transfer>
-    -->
 </data-extraction-rules>

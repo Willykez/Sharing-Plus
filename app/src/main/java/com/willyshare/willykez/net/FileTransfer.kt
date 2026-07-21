@@ -334,19 +334,55 @@ class FileReceiveServer(
             val startTime = System.currentTimeMillis()
 
             val (outputStream, savedPath) = openSink(relPath)
-            (outputStream as FileOutputStream).channel.use { fc ->
-                var pos = 0L
-                while (pos < size) {
-                    val toRead = minOf(CHUNK_SIZE.toLong(), size - pos)
-                    val n = fc.transferFrom(channel, pos, toRead)
-                    if (n <= 0) break
-                    pos += n
-                    val elapsed = (System.currentTimeMillis() - startTime).coerceAtLeast(1) / 1000.0
-                    aggregator.update(FileProgressItem(key, relPath, size, pos, pos / elapsed))
+            var completedFully = false
+            try {
+                (outputStream as FileOutputStream).channel.use { fc ->
+                    var pos = 0L
+                    while (pos < size) {
+                        val toRead = minOf(CHUNK_SIZE.toLong(), size - pos)
+                        val n = fc.transferFrom(channel, pos, toRead)
+                        if (n <= 0) break
+                        pos += n
+                        val elapsed = (System.currentTimeMillis() - startTime).coerceAtLeast(1) / 1000.0
+                        aggregator.update(FileProgressItem(key, relPath, size, pos, pos / elapsed))
+                    }
+                    completedFully = pos == size
                 }
+            } finally {
+                if (!completedFully) {
+                    // The connection dropped, or the sender bailed, mid-file. Leaving a
+                    // truncated file on disk AND telling the user (and history) it arrived
+                    // fine would be silent data loss - the previous version of this code did
+                    // exactly that. Delete the partial write and fail the whole receive
+                    // attempt instead of quietly recording a corrupt file as "complete."
+                    deletePartialSink(relPath, savedPath)
+                }
+            }
+            if (!completedFully) {
+                throw java.io.IOException("Connection dropped while receiving \"$relPath\" ($size bytes expected)")
             }
             aggregator.update(FileProgressItem(key, relPath, size, size, 0.0, isComplete = true), force = true)
             onFileReceived(savedPath, size)
+        }
+    }
+
+    /** Cleans up a truncated write after a dropped connection - see the completedFully check
+     *  in [receiveFilesInto]. Best-effort: if this can't delete it either, that's logged via
+     *  the caller's IOException, not swallowed silently. */
+    private fun deletePartialSink(relPath: String, savedPath: String) {
+        try {
+            when (val t = targetProvider()) {
+                is ReceiveTarget.Plain -> File(savedPath).takeIf { it.exists() }?.delete()
+                is ReceiveTarget.Tree -> {
+                    try {
+                        androidx.documentfile.provider.DocumentFile.fromSingleUri(t.context, Uri.parse(savedPath))?.delete()
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Best-effort cleanup only - the IOException thrown right after this already
+            // fails the transfer and surfaces an error either way.
         }
     }
 

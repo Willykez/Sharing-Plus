@@ -129,7 +129,13 @@ class WifiDirectManager(private val context: Context) {
             }
         }
         receiver = br
-        context.registerReceiver(br, filter)
+        // ContextCompat handles the version branching: on API 33+, Android requires an
+        // explicit exported/not-exported flag for any context-registered receiver, or it
+        // can throw at runtime. These are all system Wi-Fi Direct broadcasts - no other app
+        // should be able to spoof them into this receiver, so NOT_EXPORTED is correct here.
+        androidx.core.content.ContextCompat.registerReceiver(
+            context, br, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     fun stop() {
