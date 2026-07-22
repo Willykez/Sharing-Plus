@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -68,9 +67,9 @@ import com.willyshare.willykez.ui.theme.SleekSecondaryContainer
 import com.willyshare.willykez.ui.theme.SleekSurfaceContainer
 
 /**
- * Home. A compact device-identity strip up top, then two large Send/Receive bento tiles as
- * the primary destinations (not a generic three-row settings-style list), a secondary
- * "choose files first" row, and Recent Activity below.
+ * Home. A circular ring-based stats cluster up top (not flat text chips), then Send/Receive
+ * as full-width stacked "command rows" - a hub-menu feel rather than side-by-side bento
+ * tiles - a secondary "choose files first" row, and Recent Activity below.
  */
 @Composable
 fun DashboardScreen(
@@ -122,16 +121,12 @@ fun DashboardScreen(
                 }
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
-                    DeviceIdentityStrip(deviceName = deviceName, sentCount = sentCount, receivedCount = receivedCount, totalBytes = totalBytes)
+                    StatsRingCluster(deviceName = deviceName, sentCount = sentCount, receivedCount = receivedCount, totalBytes = totalBytes)
                 }
 
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(168.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        HeroActionTile(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CommandRow(
                             icon = com.willyshare.willykez.ui.PulseIcons.Send,
                             title = "Send",
                             subtitle = "Pick files, find a device",
@@ -139,8 +134,7 @@ fun DashboardScreen(
                             onColor = SleekOnPrimaryContainer,
                             onClick = { onNavigate("send") }
                         )
-                        HeroActionTile(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        CommandRow(
                             icon = com.willyshare.willykez.ui.PulseIcons.Receive,
                             title = "Receive",
                             subtitle = "Wait for an incoming file",
@@ -253,17 +247,58 @@ fun DashboardScreen(
     }
 }
 
+/**
+ * A ring-based stats cluster instead of flat text chips - a small circular arc meter for
+ * each of Sent/Received, split proportionally, plus the device name and total. Reads as a
+ * dashboard/analytics widget rather than a plain identity label row.
+ */
 @Composable
-private fun DeviceIdentityStrip(
+private fun StatsRingCluster(
     deviceName: String,
     sentCount: Int,
     receivedCount: Int,
     totalBytes: Long
 ) {
+    val total = (sentCount + receivedCount).coerceAtLeast(1)
+    val sentFraction = sentCount.toFloat() / total.toFloat()
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(SleekSurfaceContainer)
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val primary = SleekPrimary
+        val secondary = SleekSecondary
+        val track = SleekOutline
+        Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val stroke = 7.dp.toPx()
+                drawArc(
+                    color = track.copy(alpha = 0.18f),
+                    startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                )
+                if (sentCount + receivedCount > 0) {
+                    drawArc(
+                        color = primary,
+                        startAngle = -90f, sweepAngle = 360f * sentFraction, useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = secondary,
+                        startAngle = -90f + 360f * sentFraction, sweepAngle = 360f * (1f - sentFraction), useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    )
+                }
+            }
+            Text(formatBytes(totalBytes), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "THIS DEVICE",
@@ -274,43 +309,38 @@ private fun DeviceIdentityStrip(
             )
             Text(
                 text = deviceName,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Black,
                 color = SleekOnSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row {
+                RingLegendDot(color = SleekPrimary, label = "$sentCount sent")
+                Spacer(modifier = Modifier.width(12.dp))
+                RingLegendDot(color = SleekSecondary, label = "$receivedCount received")
+            }
         }
-        StatChip(value = "$sentCount", label = "sent")
-        Spacer(modifier = Modifier.width(8.dp))
-        StatChip(value = "$receivedCount", label = "recv")
-        Spacer(modifier = Modifier.width(8.dp))
-        StatChip(value = formatBytes(totalBytes), label = "total")
     }
 }
 
 @Composable
-private fun StatChip(value: String, label: String) {
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(SleekSurfaceContainer)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
-        Text(label, fontSize = 9.sp, color = SleekOnSurfaceVariant)
+private fun RingLegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(label, fontSize = 11.sp, color = SleekOnSurfaceVariant)
     }
 }
 
 /**
- * The Send/Receive bento tiles - large, side-by-side, tappable panels replacing the old
- * three-row grouped list. This is the single biggest visible break from the inherited
- * layout: two deliberate, distinct destinations instead of a generic settings-style list.
+ * Full-width command rows replacing the earlier side-by-side bento tiles - a "hub menu" feel
+ * (icon badge, stacked title/subtitle, trailing chevron) rather than a grid of square cards.
+ * Stacked vertically instead of side-by-side is the actual structural change here.
  */
 @Composable
-private fun HeroActionTile(
-    modifier: Modifier = Modifier,
+private fun CommandRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
@@ -318,7 +348,7 @@ private fun HeroActionTile(
     onColor: Color,
     onClick: () -> Unit
 ) {
-    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "hero_pulse")
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "row_pulse")
     val glowAlpha by pulse.animateFloat(
         initialValue = 0.10f, targetValue = 0.22f,
         animationSpec = androidx.compose.animation.core.infiniteRepeatable(
@@ -327,36 +357,39 @@ private fun HeroActionTile(
         ),
         label = "glowAlpha"
     )
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
             .background(containerColor)
             .clickable { onClick() }
-            .padding(18.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(60.dp)
                     .clip(CircleShape)
                     .background(onColor.copy(alpha = glowAlpha))
             )
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(onColor.copy(alpha = 0.14f)),
+                    .background(onColor.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = title, tint = onColor, modifier = Modifier.size(20.dp))
+                Icon(icon, contentDescription = title, tint = onColor, modifier = Modifier.size(22.dp))
             }
         }
-        Column {
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Black, color = onColor)
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 19.sp, fontWeight = FontWeight.Black, color = onColor)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(subtitle, fontSize = 12.sp, color = onColor.copy(alpha = 0.75f), maxLines = 2)
+            Text(subtitle, fontSize = 12.sp, color = onColor.copy(alpha = 0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = onColor.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
     }
 }
 
