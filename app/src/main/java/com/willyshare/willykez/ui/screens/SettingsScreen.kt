@@ -174,12 +174,31 @@ fun SettingsScreen(
                             SettingsRow(
                                 icon = Icons.Default.Wifi,
                                 title = "Wi-Fi Direct",
-                                subtitle = if (wifiEnabled) "Enabled and ready" else "Turn on Wi-Fi to use nearby discovery",
+                                subtitle = if (wifiEnabled) "Enabled and ready" else "Tap to turn on Wi-Fi for nearby discovery",
+                                // Android has not allowed apps to flip Wi-Fi on/off directly
+                                // since API 29 - WifiManager.setWifiEnabled() silently no-ops
+                                // for any app targeting that or newer. The correct, and only
+                                // actually working, way to offer this is Settings.Panel.ACTION_WIFI:
+                                // a system-provided quick-toggle panel that opens over this
+                                // screen and returns straight back once the user flips it,
+                                // rather than fully leaving the app for full Settings.
+                                onClick = {
+                                    if (!wifiEnabled) {
+                                        context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                                    }
+                                },
                                 trailing = {
                                     Switch(
                                         checked = wifiEnabled,
-                                        onCheckedChange = null,
-                                        enabled = false,
+                                        onCheckedChange = {
+                                            if (!wifiEnabled) {
+                                                context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                                            }
+                                            // Turning OFF from here isn't offered: the panel's own
+                                            // toggle handles that if the user wants it, and this
+                                            // avoids yanking Wi-Fi out from under an active transfer
+                                            // with a single misplaced tap.
+                                        },
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Color.White,
                                             checkedTrackColor = SleekPrimary,

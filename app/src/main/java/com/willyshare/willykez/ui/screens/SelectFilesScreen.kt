@@ -70,6 +70,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
@@ -385,12 +387,20 @@ fun SelectFilesScreen(
                 enter = slideInVertically { it },
                 exit = slideOutVertically { it }
             ) {
+                val accentColor = SleekPrimary
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .background(SleekSurfaceContainer)
-                        .border(1.dp, SleekOutline.copy(alpha = 0.3f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .drawBehind {
+                            drawLine(
+                                color = accentColor.copy(alpha = 0.5f),
+                                start = androidx.compose.ui.geometry.Offset(size.width * 0.3f, 0f),
+                                end = androidx.compose.ui.geometry.Offset(size.width * 0.7f, 0f),
+                                strokeWidth = 3.dp.toPx()
+                            )
+                        }
                         .padding(20.dp)
                 ) {
                     Row(
@@ -665,9 +675,15 @@ fun FileListRowItem(
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
+        val checkScale by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (file.isSelected) 1f else 0.82f,
+            animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy),
+            label = "check_scale"
+        )
         Box(
             modifier = Modifier
                 .size(22.dp)
+                .graphicsLayer { if (file.isSelected) { scaleX = checkScale; scaleY = checkScale } }
                 .clip(CircleShape)
                 .background(if (file.isSelected) SleekPrimary else Color.Transparent)
                 .border(1.dp, if (file.isSelected) SleekPrimary else SleekOutline.copy(alpha = 0.5f), CircleShape),
@@ -685,9 +701,15 @@ fun FileGridCardItem(
     file: FileItemEntity,
     onToggle: () -> Unit
 ) {
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (file.isSelected) 0.94f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy),
+        label = "grid_item_scale"
+    )
     Box(
         modifier = Modifier
             .aspectRatio(1f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(16.dp))
             .background(SleekCard)
             .border(

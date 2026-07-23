@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -109,18 +111,64 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
                 val outlineColor = SleekOutline
                 val primaryColor = SleekPrimary
                 val secondaryColor = SleekSecondary
+                val successColor = Color(0xFF2E7D32)
+                val ringPulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "ring_pulse")
+                val ringGlow by ringPulse.animateFloat(
+                    initialValue = 0.5f, targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                        androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        androidx.compose.animation.core.RepeatMode.Reverse
+                    ),
+                    label = "ringGlow"
+                )
                 Box(modifier = Modifier.size(220.dp).padding(20.dp), contentAlignment = Alignment.Center) {
                     Canvas(modifier = Modifier.size(180.dp)) {
                         drawCircle(color = outlineColor.copy(alpha = 0.25f), style = Stroke(width = 14.dp.toPx()))
-                        drawArc(
-                            brush = Brush.sweepGradient(listOf(primaryColor, secondaryColor, primaryColor)),
-                            startAngle = -90f, sweepAngle = fraction * 360f, useCenter = false,
-                            style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
-                        )
+                        if (progress.isComplete) {
+                            drawCircle(color = successColor, style = Stroke(width = 14.dp.toPx()))
+                        } else {
+                            drawArc(
+                                brush = Brush.sweepGradient(listOf(primaryColor, secondaryColor, primaryColor)),
+                                startAngle = -90f, sweepAngle = fraction * 360f, useCenter = false,
+                                style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
+                            )
+                            // A faint pulsing ring just outside the progress arc's leading
+                            // edge - a small "still actively moving" signal beyond the arc
+                            // itself, most noticeable on long, slow-moving transfers.
+                            drawCircle(
+                                color = primaryColor.copy(alpha = 0.12f * ringGlow),
+                                radius = size.minDimension / 2f + 10.dp.toPx(),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${(fraction * 100).toInt()}%", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold, color = SleekPrimary)
-                        Text("${formatBytes(progress.overallSpeed.toLong())}/s", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SleekOnSurfaceVariant)
+                    if (progress.isComplete) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = true,
+                            enter = androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialScale = 0.5f) +
+                                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(250))
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Complete",
+                                tint = successColor,
+                                modifier = Modifier.size(56.dp)
+                            )
+                        }
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${(fraction * 100).toInt()}%", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold, color = SleekPrimary)
+                            Text("${formatBytes(progress.overallSpeed.toLong())}/s", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SleekOnSurfaceVariant)
+                            val remainingBytes = (progress.overallTotal - progress.overallBytes).coerceAtLeast(0)
+                            val etaSeconds = if (progress.overallSpeed > 0) (remainingBytes / progress.overallSpeed).toLong() else -1L
+                            if (etaSeconds in 1..3599) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (etaSeconds < 60) "$etaSeconds sec left" else "${etaSeconds / 60} min left",
+                                    fontSize = 10.sp, color = SleekOnSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
                     }
                 }
 

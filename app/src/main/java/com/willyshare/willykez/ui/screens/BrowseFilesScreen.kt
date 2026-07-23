@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,10 +38,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +115,10 @@ fun BrowseFilesScreen(
                     showBack = true,
                     onBack = { if (!viewModel.browseUp()) onNavigate("select") }
                 )
+
+                if (pathStack.isNotEmpty()) {
+                    BreadcrumbBar(pathStack = pathStack, onJumpTo = { depth -> viewModel.browseJumpTo(depth) })
+                }
 
                 if (!storageAccessGranted) {
                     StoragePermissionRationale(
@@ -210,6 +217,46 @@ fun BrowseFilesScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BreadcrumbBar(pathStack: List<String>, onJumpTo: (Int) -> Unit) {
+    val scrollState = rememberScrollState()
+    // Auto-scroll to the end so the current (deepest) folder is always the visible, reachable
+    // one as you descend - the trail grows to the right, matching how a file path reads.
+    LaunchedEffect(pathStack.size) {
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            com.willyshare.willykez.ui.PulseIcons.FolderClosed,
+            contentDescription = null,
+            tint = SleekOnSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(14.dp).clip(RoundedCornerShape(4.dp)).clickable { onJumpTo(0) }
+        )
+        pathStack.forEachIndexed { index, segment ->
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SleekOnSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(14.dp))
+            val isLast = index == pathStack.lastIndex
+            Text(
+                text = segment.substringAfterLast('/'),
+                fontSize = 12.sp,
+                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Medium,
+                color = if (isLast) SleekPrimary else SleekOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(enabled = !isLast) { onJumpTo(index) }
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            )
         }
     }
 }

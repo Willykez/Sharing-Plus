@@ -325,6 +325,17 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    /** Jumps directly to an ancestor level from a breadcrumb tap, instead of popping one
+     *  level at a time - depth 0 is the storage-root list, depth 1 is the first folder in,
+     *  and so on. A no-op if already at that depth. */
+    fun browseJumpTo(depth: Int) {
+        val stack = browsePathStack.value
+        if (depth < 0 || depth >= stack.size) return
+        val next = stack.take(depth + 1)
+        browsePathStack.value = next
+        loadBrowseEntries(next.last())
+    }
+
     private fun loadBrowseEntries(path: String) {
         viewModelScope.launch {
             browseLoading.value = true
