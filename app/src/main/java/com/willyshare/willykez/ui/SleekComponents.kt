@@ -599,10 +599,10 @@ fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
 }
 
 @Composable
-fun FileProgressRow(item: FileProgressItem) {
+fun FileProgressRow(item: FileProgressItem, modifier: Modifier = Modifier) {
     val fraction = if (item.totalBytes > 0) (item.transferredBytes.toFloat() / item.totalBytes.toFloat()).coerceIn(0f, 1f) else 0f
     val doneColor = Color(0xFF2E7D32)
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
                 text = item.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SleekOnSurface,

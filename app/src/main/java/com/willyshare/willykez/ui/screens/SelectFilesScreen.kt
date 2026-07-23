@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.ViewList
@@ -71,7 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
@@ -139,6 +140,7 @@ fun SelectFilesScreen(
     var isGridView by remember { mutableStateOf(true) }
     var sortOption by remember { mutableStateOf(SortOption.NAME) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val selectedCount = files.count { it.isSelected }
     val totalBytes = files.filter { it.isSelected }.sumOf { it.sizeBytes }
@@ -147,10 +149,15 @@ fun SelectFilesScreen(
     } else {
         files.filter { it.category.equals(currentTab, ignoreCase = true) }
     }
+    val searchFiltered = if (searchQuery.isBlank()) {
+        categoryFiltered
+    } else {
+        categoryFiltered.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    }
     val filteredFiles = when (sortOption) {
-        SortOption.NAME -> categoryFiltered.sortedBy { it.name.lowercase() }
-        SortOption.SIZE_LARGEST -> categoryFiltered.sortedByDescending { it.sizeBytes }
-        SortOption.NEWEST -> categoryFiltered.sortedByDescending { it.dateModifiedMs }
+        SortOption.NAME -> searchFiltered.sortedBy { it.name.lowercase() }
+        SortOption.SIZE_LARGEST -> searchFiltered.sortedByDescending { it.sizeBytes }
+        SortOption.NEWEST -> searchFiltered.sortedByDescending { it.dateModifiedMs }
     }
     val sharedFiles by viewModel.pendingSharedFiles.collectAsState()
     val browseSummary by viewModel.browseSelectionSummary.collectAsState()
@@ -213,6 +220,27 @@ fun SelectFilesScreen(
                     subtitle = targetName?.let { "To $it" },
                     showBack = true,
                     onBack = goBack
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    placeholder = { Text("Search files\u2026", fontSize = 13.sp, color = SleekOnSurfaceVariant.copy(alpha = 0.6f)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = SleekOnSurfaceVariant, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        { Icon(Icons.Default.Close, contentDescription = "Clear", tint = SleekOnSurfaceVariant, modifier = Modifier.size(16.dp).clickable { searchQuery = "" }) }
+                    } else null,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = SleekOnSurface),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SleekPrimary,
+                        unfocusedBorderColor = SleekOutline.copy(alpha = 0.35f),
+                        focusedContainerColor = SleekSurfaceContainer,
+                        unfocusedContainerColor = SleekSurfaceContainer,
+                    )
                 )
                 Row(
                     modifier = Modifier

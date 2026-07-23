@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOpen
@@ -45,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,13 +96,26 @@ fun SettingsScreen(
 ) {
     val transfers by viewModel.transfers.collectAsState()
     val deviceName by viewModel.thisDeviceName.collectAsState()
+    val context = LocalContext.current
     val wifiEnabled by viewModel.wifiDirect.isWifiP2pEnabled.collectAsState()
+    var batteryExempted by remember {
+        mutableStateOf(com.willyshare.willykez.util.BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
+    }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                batteryExempted = com.willyshare.willykez.util.BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var clearHistoryExpanded by remember { mutableStateOf(false) }
     val themePrefs = LocalThemePrefs.current
     val themeState = LocalThemeState.current
     var showAppearanceSheet by remember { mutableStateOf(false) }
     val snackbarHostState = LocalSnackbarHostState.current
-    val context = LocalContext.current
 
     val receiveTreeUri by viewModel.receiveTreeUri.collectAsState()
     val destinationLabel = remember(receiveTreeUri) { viewModel.receiveDestinationLabel(receiveTreeUri) }
@@ -169,45 +185,76 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(title = "CONNECTIVITY") {
-                    val items = listOf<@Composable (GroupPosition) -> Unit> { position ->
-                        GroupedListItem(position = position) {
-                            SettingsRow(
-                                icon = Icons.Default.Wifi,
-                                title = "Wi-Fi Direct",
-                                subtitle = if (wifiEnabled) "Enabled and ready" else "Tap to turn on Wi-Fi for nearby discovery",
-                                // Android has not allowed apps to flip Wi-Fi on/off directly
-                                // since API 29 - WifiManager.setWifiEnabled() silently no-ops
-                                // for any app targeting that or newer. The correct, and only
-                                // actually working, way to offer this is Settings.Panel.ACTION_WIFI:
-                                // a system-provided quick-toggle panel that opens over this
-                                // screen and returns straight back once the user flips it,
-                                // rather than fully leaving the app for full Settings.
-                                onClick = {
-                                    if (!wifiEnabled) {
-                                        context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                    val items = listOf<@Composable (GroupPosition) -> Unit>(
+                        { position ->
+                            GroupedListItem(position = position) {
+                                SettingsRow(
+                                    icon = Icons.Default.Wifi,
+                                    title = "Wi-Fi Direct",
+                                    subtitle = if (wifiEnabled) "Enabled and ready" else "Tap to turn on Wi-Fi for nearby discovery",
+                                    // Android has not allowed apps to flip Wi-Fi on/off directly
+                                    // since API 29 - WifiManager.setWifiEnabled() silently no-ops
+                                    // for any app targeting that or newer. The correct, and only
+                                    // actually working, way to offer this is Settings.Panel.ACTION_WIFI:
+                                    // a system-provided quick-toggle panel that opens over this
+                                    // screen and returns straight back once the user flips it,
+                                    // rather than fully leaving the app for full Settings.
+                                    onClick = {
+                                        if (!wifiEnabled) {
+                                            context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                                        }
+                                    },
+                                    trailing = {
+                                        Switch(
+                                            checked = wifiEnabled,
+                                            onCheckedChange = {
+                                                if (!wifiEnabled) {
+                                                    context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                                                }
+                                                // Turning OFF from here isn't offered: the panel's own
+                                                // toggle handles that if the user wants it, and this
+                                                // avoids yanking Wi-Fi out from under an active transfer
+                                                // with a single misplaced tap.
+                                            },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = SleekPrimary,
+                                            ),
+                                        )
                                     }
-                                },
-                                trailing = {
-                                    Switch(
-                                        checked = wifiEnabled,
-                                        onCheckedChange = {
-                                            if (!wifiEnabled) {
-                                                context.startActivity(com.willyshare.willykez.util.WifiEnableHelper.requestEnable(context))
+                                )
+                            }
+                        },
+                        { position ->
+                            GroupedListItem(position = position) {
+                                SettingsRow(
+                                    icon = Icons.Default.BatteryChargingFull,
+                                    title = "Background reliability",
+                                    subtitle = if (batteryExempted) {
+                                        "Exempted from battery optimization"
+                                    } else {
+                                        "Some phones (Xiaomi, Samsung, OnePlus...) kill this in the background - tap to fix"
+                                    },
+                                    onClick = {
+                                        if (!batteryExempted) {
+                                            try {
+                                                context.startActivity(com.willyshare.willykez.util.BatteryOptimizationHelper.requestExemption(context))
+                                            } catch (_: Exception) {
+                                                context.startActivity(com.willyshare.willykez.util.BatteryOptimizationHelper.openBatterySettingsFallback())
                                             }
-                                            // Turning OFF from here isn't offered: the panel's own
-                                            // toggle handles that if the user wants it, and this
-                                            // avoids yanking Wi-Fi out from under an active transfer
-                                            // with a single misplaced tap.
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = SleekPrimary,
-                                        ),
-                                    )
-                                }
-                            )
+                                        }
+                                    },
+                                    trailing = {
+                                        if (batteryExempted) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = "Exempted", tint = Color(0xFF2E7D32), modifier = Modifier.size(22.dp))
+                                        } else {
+                                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SleekOnSurfaceVariant.copy(alpha = 0.5f))
+                                        }
+                                    }
+                                )
+                            }
                         }
-                    }
+                    )
                     items.forEachIndexed { index, row -> row(groupPositionFor(index, items.size)) }
                 }
             }

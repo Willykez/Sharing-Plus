@@ -271,6 +271,7 @@ fun SendScreen(
                                 PeerRow(
                                     device = device,
                                     isConnecting = connectingTo == device.deviceAddress,
+                                    modifier = Modifier.animateItem(),
                                     onClick = {
                                         connectingTo = device.deviceAddress
                                         viewModel.connectToPeer(device) { msg -> statusMessage = msg }
@@ -306,14 +307,18 @@ fun SendScreen(
 }
 
 @Composable
-private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, onClick: () -> Unit) {
+private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     val accentColor = SleekPrimary
+    val rowBg by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isConnecting) SleekPrimaryContainer.copy(alpha = 0.5f) else SleekCard,
+        label = "peer_row_bg"
+    )
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(SleekCard)
+            .background(rowBg)
             .drawBehind {
                 drawLine(
                     color = accentColor.copy(alpha = 0.5f),
@@ -340,7 +345,11 @@ private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, onClick: () ->
             Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Text(device.deviceName.ifBlank { "Unknown device" }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
-                Text("Wi-Fi Direct \u00B7 ${device.deviceAddress}", fontSize = 11.sp, color = SleekOnSurfaceVariant)
+                Text(
+                    text = if (isConnecting) "Connecting\u2026" else "Wi-Fi Direct \u00B7 ${device.deviceAddress}",
+                    fontSize = 11.sp,
+                    color = if (isConnecting) SleekPrimary else SleekOnSurfaceVariant
+                )
             }
         }
         if (isConnecting) {

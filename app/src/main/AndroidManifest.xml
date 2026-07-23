@@ -32,6 +32,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Only used to launch the system's own exemption-request dialog (Settings.kt requests
+         it via startActivity, never silently) - lets receiving survive OEM background-kill
+         policies (Xiaomi/Samsung/OnePlus etc. are notoriously aggressive about killing
+         Wi-Fi Direct connections and foreground services alike to save power). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       Full folder browser (internal storage + SD card) for the "Browse folders" picker.

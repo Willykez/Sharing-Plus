@@ -1,11 +1,5 @@
 package com.willyshare.willykez.ui.screens
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +72,25 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
 
     val fraction = if (progress.overallTotal > 0) (progress.overallBytes.toFloat() / progress.overallTotal.toFloat()).coerceIn(0f, 1f) else 0f
 
+    // Rolling speed history for the sparkline below the ring - samples the current speed
+    // twice a second and keeps the most recent ~30 seconds of it. This is purely a client-side
+    // visualization; it doesn't touch the transfer itself.
+    val speedHistory = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateListOf<Float>() }
+    LaunchedEffect(progress.isComplete) {
+        while (!progress.isComplete) {
+            speedHistory.add(progress.overallSpeed.toFloat())
+            if (speedHistory.size > 60) speedHistory.removeAt(0)
+            kotlinx.coroutines.delay(500)
+        }
+    }
+
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    LaunchedEffect(progress.isComplete) {
+        if (progress.isComplete) {
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
+        }
+    }
+
     Scaffold(
         containerColor = Color.Transparent
     ) { innerPadding ->
@@ -118,16 +131,12 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
                 val primaryColor = SleekPrimary
                 val secondaryColor = SleekSecondary
                 val successColor = Color(0xFF2E7D32)
-                val ringPulse = rememberInfiniteTransition(label = "ring_pulse")
+                val ringPulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "ring_pulse")
                 val ringGlow by ringPulse.animateFloat(
-                    initialValue = 0.5f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(
-                            durationMillis = 900,
-                            easing = FastOutSlowInEasing
-                        ),
-                        repeatMode = RepeatMode.Reverse
+                    initialValue = 0.5f, targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                        androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        androidx.compose.animation.core.RepeatMode.Reverse
                     ),
                     label = "ringGlow"
                 )
@@ -182,6 +191,12 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
                     }
                 }
 
+                if (!progress.isComplete && speedHistory.size >= 3) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SpeedSparkline(samples = speedHistory, modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp).height(28.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 progress.error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -197,12 +212,40 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
                         Text("Files", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
                         Spacer(modifier = Modifier.height(8.dp))
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            items(progress.files, key = { it.key }) { item -> FileProgressRow(item) }
+                            items(progress.files, key = { it.key }) { item ->
+                                FileProgressRow(item, modifier = Modifier.animateItem())
+                            }
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun SpeedSparkline(samples: List<Float>, modifier: Modifier = Modifier) {
+    val lineColor = SleekPrimary
+    val fillColor = SleekPrimary
+    Canvas(modifier = modifier) {
+        if (samples.size < 2) return@Canvas
+        val maxSpeed = (samples.maxOrNull() ?: 1f).coerceAtLeast(1f)
+        val stepX = size.width / (samples.size - 1).coerceAtLeast(1)
+        val points = samples.mapIndexed { i, v ->
+            androidx.compose.ui.geometry.Offset(i * stepX, size.height - (v / maxSpeed) * size.height)
+        }
+        val linePath = androidx.compose.ui.graphics.Path().apply {
+            moveTo(points.first().x, points.first().y)
+            for (p in points.drop(1)) lineTo(p.x, p.y)
+        }
+        val fillPath = androidx.compose.ui.graphics.Path().apply {
+            addPath(linePath)
+            lineTo(points.last().x, size.height)
+            lineTo(points.first().x, size.height)
+            close()
+        }
+        drawPath(fillPath, brush = Brush.verticalGradient(listOf(fillColor.copy(alpha = 0.22f), Color.Transparent)))
+        drawPath(linePath, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
     }
 }
