@@ -1,5 +1,11 @@
 package com.willyshare.willykez.ui.screens
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -112,12 +118,16 @@ fun TransferringScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) 
                 val primaryColor = SleekPrimary
                 val secondaryColor = SleekSecondary
                 val successColor = Color(0xFF2E7D32)
-                val ringPulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "ring_pulse")
+                val ringPulse = rememberInfiniteTransition(label = "ring_pulse")
                 val ringGlow by ringPulse.animateFloat(
-                    initialValue = 0.5f, targetValue = 1f,
-                    animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                        androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        androidx.compose.animation.core.RepeatMode.Reverse
+                    initialValue = 0.5f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(
+                            durationMillis = 900,
+                            easing = FastOutSlowInEasing
+                        ),
+                        repeatMode = RepeatMode.Reverse
                     ),
                     label = "ringGlow"
                 )
