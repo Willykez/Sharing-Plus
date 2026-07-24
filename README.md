@@ -1,65 +1,102 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Version-2.0.0-FF6B35?style=for-the-badge&labelColor=0D0D1A"/>
-  <img src="https://img.shields.io/badge/Android-7.0%2B-4CAF50?style=for-the-badge&logo=android&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Transfer-Wi--Fi%20Direct-42A5F5?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Ads-None-9C27B0?style=for-the-badge"/>
-</p>
+<div align="center">
 
-<h1 align="center">⚡ Sharing Plus</h1>
-<p align="center"><strong>Blazing-fast peer-to-peer file sharing over Wi-Fi Direct</strong></p>
-<p align="center">
-  No internet · No cloud · No account — scan a code, confirm it matches, and send
-</p>
+# ⚡ Sharing Plus
+
+**Blazing-fast peer-to-peer file sharing over Wi-Fi Direct.**
+No internet. No cloud. No account. Scan a code, confirm it matches, and send.
+
+[![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#)
+[![Min SDK](https://img.shields.io/badge/Min%20SDK-24%20(7.0)-4CAF50?style=for-the-badge)](#)
+[![Kotlin](https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](#)
+[![Transfer](https://img.shields.io/badge/Transfer-Wi--Fi%20Direct-42A5F5?style=for-the-badge)](#)
+[![No Ads](https://img.shields.io/badge/Ads-None-9C27B0?style=for-the-badge)](#)
+
+</div>
 
 ---
 
 ## 📱 Overview
 
-**Sharing Plus** is a fully offline Android file-transfer app built on **Wi-Fi Direct** (`WifiP2pManager`) and **QR pairing**. Two devices connect directly — no router, no internet, no account — and files move over a raw NIO socket at full Wi-Fi speeds, with an optional forced-5GHz fast path. Every transfer is logged locally in a Room database.
+**Sharing Plus** connects two Android devices directly over **Wi-Fi Direct** — no router, no internet, no account — and moves files at full Wi-Fi speed over a raw socket, with an optional forced-5GHz fast path. Pairing is confirmed with a short match code shown on both devices before a single byte moves. Every transfer is logged locally; nothing ever touches a server.
 
-Built with **Jetpack Compose**, a custom Material 3 `SleekPalette` design system (aurora gradients, glassmorphism cards, holographic borders), and a single-`ViewModel` architecture.
+Built with **Jetpack Compose** and a fully dynamic **Material You** color system — 8 curated palettes, custom hex, or your wallpaper's own colors — so the screenshots below are just one of many looks the app can wear.
 
 | | |
 |---|---|
 | **Package** | `com.willyshare.willykez` |
 | **Min SDK** | 24 (Android 7.0) |
-| **Language** | Kotlin, Jetpack Compose |
-| **Storage** | Room (transfer history), SAF (custom receive folder) |
+| **Language** | 100% Kotlin, Jetpack Compose |
+| **Storage** | Room (local history only), SAF (custom receive folder) |
+| **Network** | Wi-Fi Direct (`WifiP2pManager`), raw NIO sockets |
 
 ---
 
 ## ✨ Features
 
-### 🔗 Connectivity
-- **Wi-Fi Direct peer discovery** — real `WifiP2pManager` broadcasts, connect from a live nearby-devices list
-- **QR pairing with a pull model** — the device with files ready to send shows a QR ("I'm discoverable"); the receiving device scans it and *pulls* the cart. This mirrors how people actually think about sharing: the person offering files is the one who gets found.
-- **High-speed mode** — forces the Wi-Fi Direct group onto 5GHz (`GROUP_OWNER_BAND_5GHZ`) when the chipset supports it, with a clean fallback to auto-band on chipsets/OEMs that reject a forced band. Toggling it mid-session correctly tears down and re-forms the group instead of silently failing.
-- **Match-code confirmation** — after connecting, before a single byte of file data moves, both devices show the same 4-digit code and both people must tap Confirm. Closes the "auto-trust whoever you land on" gap that QR/peer-discovery flows otherwise have. Auto-declines after 30 seconds of silence.
+**🔗 Connectivity**
+- Live Wi-Fi Direct peer discovery, with automatic re-scanning so it never silently goes stale
+- QR pairing built around a *pull* model — the device with files ready shows a code; the receiving device scans it and pulls the cart
+- Forced 5GHz "High-speed Mode" where the chipset supports it, with a clean auto-band fallback
+- A 4-digit match code shown on both devices before any transfer begins — closes the "auto-trust whoever you land on" gap that QR/discovery flows otherwise have
+- Self-correcting connection roles: whichever device actually ends up as Wi-Fi Direct's Group Owner vs. Client, the right side pushes and the right side pulls, automatically
 
-### 📤 Sending
-- Pick files from device storage — Photos, Videos, Documents, APKs, Audio, Archives
-- Grouped file browser with category tabs, multi-select, and thumbnail previews (including a play-badge overlay on video thumbnails)
-- Cart is decoupled from connection: pick files first or connect first, in either order — the cart survives navigating around the app
-- Files shared in from other apps ("Share to Sharing Plus") land straight in the cart
-- Per-file progress rows with live speed (MB/s) and byte count; parallel multi-stream sending for large batches
+**📤 Sending**
+- Grouped file browser with thumbnails, category tabs, multi-select, and live search
+- Cart is decoupled from connection — pick files first or connect first, in either order
+- Files shared in from other apps land straight in the cart
+- Parallel multi-stream sending with live per-file progress and a real-time speed graph
 
-### 📥 Receiving
-- Always-on background listener — no need to sit on the Receive screen for another device to find you
-- Choose a custom save folder via Storage Access Framework, or fall back to the app's own directory
-- Foreground service + notification keep receiving alive even when the app is backgrounded
-- Every finished transfer (sent or received) is written to a local, offline history log
+**📥 Receiving**
+- Always-on background listener — no need to sit on the Receive screen
+- Custom save folder via Storage Access Framework, or the app's own default directory
+- Foreground service keeps receiving alive while backgrounded
 
-### 🔒 Trust & safety
-- Every socket connection opens with an explicit intent byte (push vs. pull) — the wire protocol never guesses
-- Nothing is written to disk, and nothing is sent, until both devices' users have confirmed the same match-code
+**🎨 Design**
+- Full Material You dynamic theming: 8 curated palettes, custom hex, or system wallpaper colors, each with light/dark/black variants and adjustable shading intensity
+- A dot-grid mesh + radar-scan background and hairline-accented cards, generated fresh from whichever color you pick — not hardcoded to one look
+- Bottom sheets for quick actions (QR display, QR scanning, theme picker) instead of full-page navigation where it doesn't need to be
+
+**🔒 Trust & privacy**
+- Every socket connection opens with an explicit intent byte — the wire protocol never guesses who's pushing and who's pulling
+- Nothing is written to disk, and nothing is sent, until both devices' users confirm the same match code
+- Transfer history is explicitly excluded from Android cloud backup — a "no cloud" app that actually stays off the cloud
 - No analytics, no ads, no network calls beyond the direct peer-to-peer link
+
+---
+
+## 📸 Screenshots
+
+<table>
+<tr>
+<td width="33%"><img src="docs/screenshots/home-honey.png" alt="Home screen, Honey theme"/></td>
+<td width="33%"><img src="docs/screenshots/home-mint.png" alt="Home screen, Mint theme"/></td>
+<td width="33%"><img src="docs/screenshots/select-to-send.png" alt="Select files to send"/></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Home</b> — dynamic theming in action</sub></td>
+<td align="center"><sub><b>Home</b> — same layout, different palette</sub></td>
+<td align="center"><sub><b>Select to Send</b> — grid, search, categories</sub></td>
+</tr>
+<tr>
+<td width="33%"><img src="docs/screenshots/send-scanning.png" alt="Scanning for nearby devices"/></td>
+<td width="33%"><img src="docs/screenshots/transfer-history.png" alt="Transfer history"/></td>
+<td width="33%"><img src="docs/screenshots/settings.png" alt="Settings"/></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Send</b> — live discovery</sub></td>
+<td align="center"><sub><b>History</b> — local-only transfer log</sub></td>
+<td align="center"><sub><b>Settings</b> — connectivity & appearance</sub></td>
+</tr>
+</table>
+
+<p align="center"><img src="docs/screenshots/appearance-sheet.png" alt="Appearance picker bottom sheet" width="33%"/></p>
+<p align="center"><sub><b>Appearance</b> — palette style, tonal previews, shading intensity, all live</sub></p>
 
 ---
 
 ## 🧠 How a transfer actually happens
 
-Sharing Plus uses a small mode-byte protocol on top of raw TCP, plus a separate one-shot handshake connection for the match-code confirm. This is what makes the QR sender/receiver swap *and* the trust gate possible without the two flows stepping on each other:
+A small mode-byte protocol sits on top of raw TCP, plus a separate one-shot handshake connection for the match-code confirm:
 
 ```
 1. HANDSHAKE  (its own short-lived connection, always first)
@@ -74,29 +111,7 @@ Sharing Plus uses a small mode-byte protocol on top of raw TCP, plus a separate 
               connection and writes its files down the same socket instead
 ```
 
-Two things fall out of this design:
-
-- **The always-on receive listener never has to guess who's connecting or why** — the first byte always tells it.
-- **Parallel multi-stream sends never trigger duplicate confirm dialogs** — the handshake is a single connection, separate from the (possibly several) parallel data connections that follow it.
-
----
-
-## 🗺️ Where things stand
-
-| Stage | What it covers | Status |
-|---|---|---|
-| 1 | Core Wi-Fi Direct transfer, notifications, history | ✅ Done |
-| 2 | Cart/role decoupling, unified connection state machine, panic-button reset | ✅ Done |
-| 2.5 | Notification crash fix + guardrails | ✅ Done |
-| 3a | Grid thumbnails, video play-badge | ✅ Done |
-| 3b | QR sender/receiver role swap (pull model) + high-speed mode band-switch fix | ✅ Done |
-| 4 | Match-code confirmation before any transfer begins | ✅ Done |
-| — | Unified Nearby/Connect screen (merging Send/Receive into one state-driven screen) | ⏳ Scoped, not started — Send and Receive are intentionally still separate screens for now |
-| — | Cancel support for a pull-triggered push | ⏳ Known gap — see below |
-
-### Known limitations worth knowing about
-- **Cancelling a pull-triggered send isn't wired up yet.** If someone scans your QR and pulls from you, that push runs on its own thread rather than through the cancellable job the rest of the app uses — the in-progress screen is honest about this (its button says "Hide," not "Cancel") rather than pretending to stop something it can't.
-- **The peer-list (non-QR) connect flow is push-only**, unchanged from earlier versions — you pick a nearby device, you send to them. Only the QR flow uses the pull model.
+The always-on receive listener never has to guess who's connecting or why — the first byte always tells it. And because the handshake is its own connection, a parallel multi-stream send never triggers duplicate confirm prompts.
 
 ---
 
@@ -104,24 +119,25 @@ Two things fall out of this design:
 
 ```
 app/src/main/java/com/willyshare/willykez/
-├── MainActivity.kt          — Compose navigation host, global PIN overlay, back-stack
+├── MainActivity.kt          — Compose navigation host, global PIN confirm sheet, back-stack
 ├── net/                     — Wi-Fi Direct, raw socket transfer protocol, QR payload codec
 │   ├── WifiDirectManager.kt
 │   ├── FileTransfer.kt      — FileSenderClient / FileReceiveServer, the mode-byte protocol
 │   └── QrPairing.kt
 ├── ui/
 │   ├── PulseViewModel.kt    — single source of truth: cart, connection state, transfer state
-│   └── screens/             — one file per screen (Send, Receive, MyQr, ScanQr, Transferring, …)
-├── data/                    — Room database (transfer history)
+│   ├── theme/                — dynamic Material You color derivation, curated palettes
+│   └── screens/               — one file per screen/sheet
+├── data/                    — Room database (local transfer history only)
 ├── service/                 — foreground service keeping receive-listening alive
-└── util/                    — notifications, share-intent handling
+└── util/                    — notifications, share-intent handling, battery/Wi-Fi helpers
 ```
 
 ---
 
 ## 🛠️ Building
 
-Standard Android Studio / Gradle project — open the root folder, let Gradle sync, run on a device (Wi-Fi Direct doesn't work in the emulator). Two physical devices are needed to test any transfer.
+Standard Android Studio / Gradle project. Wi-Fi Direct doesn't work in the emulator — two physical devices are needed to test any actual transfer.
 
 ```bash
 ./gradlew assembleDebug
