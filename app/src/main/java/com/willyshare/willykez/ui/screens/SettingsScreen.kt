@@ -85,6 +85,8 @@ import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekPrimary
 import com.willyshare.willykez.ui.theme.SleekOnPrimaryContainer
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
+import com.willyshare.willykez.ui.theme.SleekSurfaceContainer
+import androidx.compose.foundation.border
 
 /**
  * Settings, restyled around a grouped-list layout: sections read as one seamless
