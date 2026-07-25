@@ -1,5 +1,7 @@
 package com.willyshare.willykez.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Wifi
@@ -80,6 +83,7 @@ import com.willyshare.willykez.ui.theme.LocalThemeState
 import com.willyshare.willykez.ui.theme.SleekOnSurface
 import com.willyshare.willykez.ui.theme.SleekOnSurfaceVariant
 import com.willyshare.willykez.ui.theme.SleekPrimary
+import com.willyshare.willykez.ui.theme.SleekOnPrimaryContainer
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
 
 /**
@@ -377,6 +381,12 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsSection(title = "DEVELOPER") {
+                    DeveloperCard(context = context)
+                }
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
@@ -419,8 +429,86 @@ private fun SettingsSection(
     }
 }
 
+/**
+ * A proper "about the developer" card instead of a plain settings row: GitHub avatar (loaded
+ * live via GitHub's own avatar URL convention - https://github.com/<user>.png always resolves
+ * to that user's current profile photo, no API key needed), a short description, and two
+ * tappable links straight out to the profile and the app's own source repository.
+ */
 @Composable
-private fun SettingsRow(
+private fun DeveloperCard(context: android.content.Context) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(SleekSurfaceContainer)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        coil.compose.AsyncImage(
+            model = "https://github.com/Willykez.png",
+            contentDescription = "Willykez",
+            modifier = Modifier
+                .size(76.dp)
+                .clip(CircleShape)
+                .border(2.dp, SleekPrimary.copy(alpha = 0.5f), CircleShape),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Willykez", fontSize = 18.sp, fontWeight = FontWeight.Black, color = SleekOnSurface)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Sharing Plus is built and maintained independently \u2014 no company, no funding, just an app made to move files the way it should work: fast, offline, and private. Thanks for using it.",
+            fontSize = 12.sp,
+            color = SleekOnSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 17.sp
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            DeveloperLinkButton(
+                label = "GitHub Profile",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Willykez"))
+                    )
+                }
+            )
+            DeveloperLinkButton(
+                label = "Source Code",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Willykez/Sharing-Plus"))
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeveloperLinkButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(SleekPrimaryContainer)
+            .clickable { onClick() }
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SleekOnPrimaryContainer)
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(Icons.Default.OpenInNew, contentDescription = null, tint = SleekOnPrimaryContainer, modifier = Modifier.size(13.dp))
+    }
+}
+
+
     icon: ImageVector,
     title: String,
     subtitle: String,
