@@ -508,7 +508,8 @@ private fun DeveloperLinkButton(label: String, modifier: Modifier = Modifier, on
     }
 }
 
-
+@Composable
+private fun SettingsRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
