@@ -143,6 +143,19 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     val senderConnected: StateFlow<Boolean> = fileReceiver.senderConnected
     val receiveProgress: StateFlow<TransferProgress> = fileReceiver.progress
 
+    /** Fires the moment a peer joins this device's Wi-Fi Direct group at the P2P layer -
+     *  well before any TCP connection, let alone the handshake or a real transfer, exists.
+     *  [senderConnected] only flips once a TCP socket is actually accepted, which is much
+     *  later: the other device still has to open the handshake connection, both people have
+     *  to confirm the match code, and only then does the real transfer connection open. In
+     *  between, the OTHER device's own screen already shows itself as "connected" (its
+     *  targetIp gets set the instant the P2P link forms), while this device was still showing
+     *  a bare "waiting/listening" state with zero indication anything had happened yet - two
+     *  phones side by side visibly disagreeing about whether they were connected. Screens
+     *  should treat hostHasPeer as an earlier "linked" milestone, distinct from and prior to
+     *  senderConnected's "actively talking" milestone. */
+    val hostHasPeer: StateFlow<Boolean> = wifiDirect.hostHasPeer
+
     // ---- Send flow progress ----
     val sendProgress: StateFlow<TransferProgress> = fileSender.progress
 

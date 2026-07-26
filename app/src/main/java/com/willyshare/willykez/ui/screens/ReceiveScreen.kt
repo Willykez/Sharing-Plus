@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -60,6 +61,7 @@ import com.willyshare.willykez.ui.theme.SleekOutline
 import com.willyshare.willykez.ui.theme.SleekPrimary
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
 import com.willyshare.willykez.ui.theme.SleekSecondary
+import com.willyshare.willykez.ui.theme.SleekSecondaryContainer
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -76,6 +78,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
 
     val isListening by viewModel.isListening.collectAsState()
     val senderConnected by viewModel.senderConnected.collectAsState()
+    val hostHasPeer by viewModel.hostHasPeer.collectAsState()
     val progress by viewModel.receiveProgress.collectAsState()
     val deviceName by viewModel.thisDeviceName.collectAsState()
 
@@ -145,31 +148,63 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                             // Same horizontal status-strip language as the Send screen's
                             // discovery state, instead of a big centered hero circle - the two
                             // screens now share one consistent "looking for a peer" idiom.
+                            //
+                            // hostHasPeer vs senderConnected: hostHasPeer fires the instant a
+                            // device joins this one's Wi-Fi Direct group at the P2P layer -
+                            // well before any TCP connection exists. senderConnected only
+                            // flips once a real socket is actually accepted, which is much
+                            // later (the other device still has to open the handshake
+                            // connection, both people confirm the match code, then the real
+                            // transfer connection opens). Without watching hostHasPeer
+                            // separately, this screen kept showing a bare "waiting" state
+                            // through that whole gap - while the OTHER device's own screen
+                            // already shows itself as connected the instant the P2P link
+                            // forms. Two phones side by side visibly disagreeing about
+                            // whether they were connected. This is the fix for that.
+                            val linked = hostHasPeer
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    RadarPulseRing(76, 0)
-                                    RadarPulseRing(58, 700)
+                                    if (!linked) {
+                                        RadarPulseRing(76, 0)
+                                        RadarPulseRing(58, 700)
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .size(48.dp)
                                             .clip(CircleShape)
-                                            .background(SleekPrimaryContainer)
-                                            .border(1.5.dp, SleekPrimary.copy(alpha = 0.5f), CircleShape),
+                                            .background(if (linked) SleekSecondaryContainer else SleekPrimaryContainer)
+                                            .border(1.5.dp, (if (linked) SleekSecondary else SleekPrimary).copy(alpha = 0.5f), CircleShape),
                                         contentAlignment = Alignment.Center
-                                    ) { Icon(com.willyshare.willykez.ui.PulseIcons.SignalBars, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(22.dp)) }
+                                    ) {
+                                        if (linked) {
+                                            CircularProgressIndicator(color = SleekSecondary, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                                        } else {
+                                            Icon(com.willyshare.willykez.ui.PulseIcons.SignalBars, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(22.dp))
+                                        }
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column {
-                                    Text("Waiting to receive", fontSize = 16.sp, fontWeight = FontWeight.Black, color = SleekOnSurface)
-                                    Text("Visible as \u201C$deviceName\u201D", fontSize = 11.sp, color = SleekOnSurfaceVariant)
+                                    Text(
+                                        if (linked) "Device linked" else "Waiting to receive",
+                                        fontSize = 16.sp, fontWeight = FontWeight.Black, color = SleekOnSurface
+                                    )
+                                    Text(
+                                        if (linked) "Starting transfer\u2026" else "Visible as \u201C$deviceName\u201D",
+                                        fontSize = 11.sp, color = SleekOnSurfaceVariant
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                "Ask the sender to pick \u201C$deviceName\u201D from their Send screen,\nor scan their QR code.",
+                                text = if (linked) {
+                                    "Connected to a nearby device \u2014 hang tight while the transfer starts."
+                                } else {
+                                    "Ask the sender to pick \u201C$deviceName\u201D from their Send screen,\nor scan their QR code."
+                                },
                                 fontSize = 13.sp, color = SleekOnSurfaceVariant, textAlign = TextAlign.Center
                             )
                         } else {

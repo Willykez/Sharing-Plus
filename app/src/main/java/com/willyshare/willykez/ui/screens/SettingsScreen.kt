@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,7 +87,6 @@ import com.willyshare.willykez.ui.theme.SleekPrimary
 import com.willyshare.willykez.ui.theme.SleekOnPrimaryContainer
 import com.willyshare.willykez.ui.theme.SleekPrimaryContainer
 import com.willyshare.willykez.ui.theme.SleekSurfaceContainer
-import androidx.compose.foundation.border
 
 /**
  * Settings, restyled around a grouped-list layout: sections read as one seamless
