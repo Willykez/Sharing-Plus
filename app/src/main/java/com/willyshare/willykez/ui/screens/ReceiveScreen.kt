@@ -79,6 +79,7 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
     val isListening by viewModel.isListening.collectAsState()
     val senderConnected by viewModel.senderConnected.collectAsState()
     val hostHasPeer by viewModel.hostHasPeer.collectAsState()
+    val connectedPeerIp by viewModel.connectedPeerIp.collectAsState()
     val progress by viewModel.receiveProgress.collectAsState()
     val deviceName by viewModel.thisDeviceName.collectAsState()
 
@@ -275,11 +276,30 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
                     }
                 }
 
-                if (!senderConnected && permissionsState.allPermissionsGranted) {
+                // Sharing isn't meant to be a one-way street: once a peer is known (they've
+                // linked to us, whether or not a transfer is actively running right now),
+                // let this device push files back to them too - reusing the exact same
+                // SelectFiles -> Transfer push path Send already uses. Hidden mid-transfer
+                // only, so it can't collide with an in-progress receive.
+                val canSendBack = connectedPeerIp != null && (progress.overallTotal == 0L || progress.isComplete)
+
+                if (!senderConnected && connectedPeerIp == null && permissionsState.allPermissionsGranted) {
                     SleekFloatingPillButton(
                         text = "Scan QR",
                         icon = Icons.Default.QrCodeScanner,
                         onClick = { showScanSheet = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 24.dp)
+                    )
+                } else if (canSendBack) {
+                    SleekFloatingPillButton(
+                        text = "Send files too",
+                        icon = com.willyshare.willykez.ui.PulseIcons.Send,
+                        onClick = {
+                            viewModel.prepareSendToConnectedPeer()
+                            onNavigate("select")
+                        },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 24.dp)

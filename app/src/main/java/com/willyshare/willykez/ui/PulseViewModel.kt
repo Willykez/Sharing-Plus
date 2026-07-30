@@ -156,6 +156,27 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
      *  senderConnected's "actively talking" milestone. */
     val hostHasPeer: StateFlow<Boolean> = wifiDirect.hostHasPeer
 
+    /** The IP of whoever most recently connected to this device - lets Receive offer "send
+     *  files to them too" without the person ever having to leave and re-find the same peer.
+     *  See [FileReceiveServer.lastPeerIp] for the full rationale. */
+    val connectedPeerIp: StateFlow<String?> = fileReceiver.lastPeerIp
+
+    /**
+     * Sharing here was never meant to be a one-way street: once two devices have found each
+     * other, either side should be able to push files to the other without backing all the
+     * way out and re-discovering them from scratch. This reuses targetIp/targetSource - the
+     * exact same fields the normal Send flow already sets - so the existing SelectFiles →
+     * Transfer push path just works unmodified once this is called; the only difference is
+     * *what* set them (a previously-accepted incoming connection, not a fresh outbound dial).
+     */
+    fun prepareSendToConnectedPeer() {
+        val ip = connectedPeerIp.value ?: return
+        targetIp.value = ip
+        targetPort.value = TRANSFER_PORT
+        targetName.value = targetName.value ?: "Connected device"
+        targetSource.value = TargetSource.WIFI_DIRECT
+    }
+
     // ---- Send flow progress ----
     val sendProgress: StateFlow<TransferProgress> = fileSender.progress
 
@@ -282,6 +303,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         targetName.value = null
         targetSource.value = TargetSource.NONE
         fastConnectStatus.value = null
+        fileReceiver.clearLastPeer()
         // NOTE: deliberately not calling SparkTransferService.stopIfIdle() here - receiving
         // is always-on now, so the foreground service must keep running regardless of a
         // send/pairing attempt being reset. It only ever stops in onCleared()/stopReceiving().
@@ -569,6 +591,38 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
      *  and fire a second, duplicate pull attempt at the same target. */
     private var pendingQrJoin = false
 
+    /**
+     * No foreground service, on its own, guarantees the CPU stays awake between network I/O
+     * bursts on every OEM skin - some are aggressive enough to let the radio/CPU nap between
+     * packets even with a foreground service running, which shows up as a transfer that
+     * stalls or crawls once the screen turns off. A partial wake lock held only for the
+     * duration of an actual active transfer (never while just idly listening) closes that
+     * gap without the battery cost of holding one for the app's entire always-on-receiving
+     * lifetime. The 10-minute timeout is a safety cap, not the expected duration - if a
+     * transfer is still running past that, [acquireTransferWakeLock] is called again
+     * wherever it's still needed, and if release is ever missed due to a bug, this timeout
+     * guarantees it can't drain the battery indefinitely.
+     */
+    private var transferWakeLock: android.os.PowerManager.WakeLock? = null
+
+    private fun acquireTransferWakeLock() {
+        try {
+            if (transferWakeLock?.isHeld == true) return
+            val pm = appContext.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager ?: return
+            transferWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "SharingPlus:activeTransfer")
+            transferWakeLock?.acquire(10 * 60 * 1000L)
+        } catch (_: Exception) {
+            // Never let wake lock bookkeeping itself take down a transfer.
+        }
+    }
+
+    private fun releaseTransferWakeLock() {
+        try {
+            transferWakeLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {
+        }
+    }
+
     /** The full pending cart right now, from every source (MediaStore picks, folder browser,
      *  and files handed in via another app's share sheet) - used by both the normal push
      *  flow ([startTransferSession]) and the pull-response flow ([handleIncomingPullRequest]). */
@@ -638,9 +692,14 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         SparkTransferService.start(appContext)
-        val success = fileSender.pushOverAcceptedChannel(channel, sendables)
-        if (success) {
-            kotlinx.coroutines.runBlocking { recordSentHistory(selected, fromBrowser, fromShareIntent) }
+        acquireTransferWakeLock()
+        try {
+            val success = fileSender.pushOverAcceptedChannel(channel, sendables)
+            if (success) {
+                kotlinx.coroutines.runBlocking { recordSentHistory(selected, fromBrowser, fromShareIntent) }
+            }
+        } finally {
+            releaseTransferWakeLock()
         }
     }
 
@@ -657,6 +716,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         SparkTransferService.start(appContext)
+        acquireTransferWakeLock()
         transferJob = viewModelScope.launch {
             var success = false
             try {
@@ -676,6 +736,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
             } catch (t: Throwable) {
                 success = false
             } finally {
+                releaseTransferWakeLock()
                 transferJob = null
                 onComplete(success)
             }
@@ -711,6 +772,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         SparkTransferService.start(appContext)
+        acquireTransferWakeLock()
         transferJob = viewModelScope.launch {
             // Wrapped end-to-end: any unexpected exception here (a bad URI, a database
             // hiccup, a socket dying mid-write) must never crash the app - it should just
@@ -740,6 +802,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 // Deliberately not stopping the service here - it's the same always-on
                 // foreground service keeping receiving alive; a finished/failed send must
                 // not tear that down.
+                releaseTransferWakeLock()
                 transferJob = null
                 onComplete(success)
             }
@@ -750,6 +813,7 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelTransferSession() {
         transferJob?.cancel()
         transferJob = null
+        releaseTransferWakeLock()
         // Not stopping the service - same reasoning as above, receiving stays up.
     }
 

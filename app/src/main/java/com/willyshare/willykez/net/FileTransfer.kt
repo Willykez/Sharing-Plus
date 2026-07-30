@@ -209,6 +209,12 @@ class FileReceiveServer(
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
     private val _senderConnected = MutableStateFlow(false)
     val senderConnected: StateFlow<Boolean> = _senderConnected.asStateFlow()
+    /** The IP of whoever last connected to this device, kept around after their connection
+     *  closes (not cleared on every disconnect the way senderConnected is) so the UI can
+     *  offer "send files to them too" for a while after - see PulseViewModel.connectedPeerIp.
+     *  Only cleared by an explicit reset (the app's own panic-button disconnect). */
+    private val _lastPeerIp = MutableStateFlow<String?>(null)
+    val lastPeerIp: StateFlow<String?> = _lastPeerIp.asStateFlow()
 
     @Volatile private var serverChannel: ServerSocketChannel? = null
     @Volatile private var running = false
@@ -237,6 +243,7 @@ class FileReceiveServer(
                     s.receiveBufferSize = SOCKET_BUF
                     activeStreams.incrementAndGet()
                     _senderConnected.value = true
+                    s.inetAddress?.hostAddress?.let { _lastPeerIp.value = it }
                     pool.execute {
                         try {
                             client.use { ch ->
@@ -431,6 +438,13 @@ class FileReceiveServer(
         serverChannel = null
         _isListening.value = false
         _senderConnected.value = false
+    }
+
+    /** Called from the app's panic-button reset - unlike [stop], receiving itself keeps
+     *  running; this only clears the "send files back to them" affordance so a stale peer
+     *  from before the reset doesn't linger in the UI. */
+    fun clearLastPeer() {
+        _lastPeerIp.value = null
     }
 }
 
