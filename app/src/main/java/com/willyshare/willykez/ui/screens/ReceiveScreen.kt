@@ -71,7 +71,14 @@ import com.google.accompanist.permissions.shouldShowRationale
 @Composable
 fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
     val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
+        listOf(
+            Manifest.permission.NEARBY_WIFI_DEVICES,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
     } else listOf(Manifest.permission.ACCESS_FINE_LOCATION)
     val permissionsState = rememberMultiplePermissionsState(requiredPermissions)
     var showScanSheet by remember { mutableStateOf(false) }
@@ -89,7 +96,14 @@ fun ReceiveScreen(viewModel: PulseViewModel, onNavigate: (String) -> Unit) {
         // longer needs (or should) start/stop with this screen's lifecycle.
     }
     LaunchedEffect(permissionsState.allPermissionsGranted) {
-        if (permissionsState.allPermissionsGranted) viewModel.startPeerDiscovery()
+        if (permissionsState.allPermissionsGranted) {
+            viewModel.startPeerDiscovery()
+            // Advertises this device over BLE so a sender's scan can bootstrap straight to
+            // our Wi-Fi Direct address - see BleNearbyManager. Safe/idempotent if already
+            // started from the ViewModel's own init{}; this just covers the case where
+            // Bluetooth permission was only just granted on this screen.
+            viewModel.refreshBle()
+        }
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.stopPeerDiscovery() }

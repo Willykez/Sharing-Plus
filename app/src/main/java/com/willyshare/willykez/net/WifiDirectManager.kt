@@ -40,6 +40,13 @@ class WifiDirectManager(private val context: Context) {
     private val _thisDeviceName = MutableStateFlow(android.os.Build.MODEL ?: "This device")
     val thisDeviceName: StateFlow<String> = _thisDeviceName.asStateFlow()
 
+    /** This device's own Wi-Fi Direct MAC, as last reported by the OS. Handed out over BLE
+     *  (see [com.willyshare.willykez.net.BleNearbyManager.localInfoProvider]) so a nearby
+     *  peer can dial [connectByAddress] the instant they spot us over Bluetooth, instead of
+     *  waiting for their own `discoverPeers()` cycle to surface us. */
+    private val _thisDeviceAddress = MutableStateFlow<String?>(null)
+    val thisDeviceAddress: StateFlow<String?> = _thisDeviceAddress.asStateFlow()
+
     private val _isDiscovering = MutableStateFlow(false)
     val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()
 
@@ -124,6 +131,13 @@ class WifiDirectManager(private val context: Context) {
                         if (!device?.deviceName.isNullOrBlank()) {
                             _thisDeviceName.value = device!!.deviceName
                         }
+                        // deviceAddress here is frequently randomized/anonymized on Android 12+
+                        // for apps without NEARBY_WIFI_DEVICES, but on the rare devices where
+                        // it isn't, this is the cheapest possible way to pick it up - no extra
+                        // permission or API call beyond what discovery already needs.
+                        if (!device?.deviceAddress.isNullOrBlank()) {
+                            _thisDeviceAddress.value = device!!.deviceAddress
+                        }
                     }
                 }
             }
@@ -136,6 +150,23 @@ class WifiDirectManager(private val context: Context) {
         androidx.core.content.ContextCompat.registerReceiver(
             context, br, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        refreshOwnDeviceInfo()
+    }
+
+    /** A second, more reliable source for [thisDeviceAddress]/[thisDeviceName] than waiting on
+     *  a THIS_DEVICE_CHANGED broadcast that may not fire again once already delivered once. */
+    @SuppressLint("MissingPermission")
+    private fun refreshOwnDeviceInfo() {
+        val mgr = manager ?: return
+        val ch = channel ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            mgr.requestDeviceInfo(ch) { device ->
+                if (!device?.deviceName.isNullOrBlank()) _thisDeviceName.value = device!!.deviceName
+                if (!device?.deviceAddress.isNullOrBlank()) _thisDeviceAddress.value = device!!.deviceAddress
+            }
+        } catch (_: SecurityException) {
+        }
     }
 
     fun stop() {
@@ -182,22 +213,56 @@ class WifiDirectManager(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun connect(device: WifiP2pDevice, onResult: (Boolean, String) -> Unit) {
+        connectToAddress(device.deviceAddress, device.deviceName, onResult)
+    }
+
+    /**
+     * BLE fast path: dials a Wi-Fi Direct connect using an address handed over by
+     * [BleNearbyManager]'s GATT exchange, without needing that peer to have shown up in our
+     * own `discoverPeers()` list first. Wi-Fi Direct's `connect()` only needs the MAC - it
+     * doesn't care whether the caller learned it via P2P discovery or another channel - so
+     * this is a legitimate shortcut, not a protocol workaround: it just skips the slowest
+     * part (waiting for our own discovery cycle to notice them) while every subsequent step
+     * (negotiation, group formation, the match-code handshake) is identical to the normal path.
+     */
+    fun connectByAddress(address: String, displayName: String, onResult: (Boolean, String) -> Unit) {
+        connectToAddress(address, displayName, onResult)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun connectToAddress(
+        address: String,
+        displayName: String,
+        onResult: (Boolean, String) -> Unit,
+        attempt: Int = 1
+    ) {
         val mgr = manager ?: return onResult(false, "Wi-Fi Direct not supported")
         val ch = channel ?: return onResult(false, "Not initialized")
         val config = WifiP2pConfig().apply {
-            deviceAddress = device.deviceAddress
+            deviceAddress = address
             wps.setup = WpsInfo.PBC
             // 0 means least inclination to be the Group Owner (Client)
-            groupOwnerIntent = 0 
+            groupOwnerIntent = 0
         }
         try {
             mgr.connect(ch, config, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
-                    onResult(true, "Connecting to ${device.deviceName}\u2026")
+                    onResult(true, "Connecting to $displayName\u2026")
                 }
 
                 override fun onFailure(reason: Int) {
-                    onResult(false, "Connection failed (code $reason)")
+                    // Reason 2 = BUSY: extremely common right after a previous group/connection
+                    // was torn down, since the driver hasn't finished cleaning up yet. A blind
+                    // "connection failed" here is the single most common false-negative this
+                    // app used to surface - one short-delayed retry clears the vast majority
+                    // of them without the person having to notice or tap anything twice.
+                    if (reason == WifiP2pManager.BUSY && attempt < 2) {
+                        android.os.Handler(context.mainLooper).postDelayed({
+                            connectToAddress(address, displayName, onResult, attempt + 1)
+                        }, 1200L)
+                    } else {
+                        onResult(false, "Connection failed (code $reason)")
+                    }
                 }
             })
         } catch (e: SecurityException) {

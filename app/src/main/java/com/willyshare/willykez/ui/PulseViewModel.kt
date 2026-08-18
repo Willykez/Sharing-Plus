@@ -6,6 +6,8 @@ import android.net.wifi.p2p.WifiP2pDevice
 import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.willyshare.willykez.net.BleNearbyDevice
+import com.willyshare.willykez.net.BleNearbyManager
 import com.willyshare.willykez.data.FileItemEntity
 import com.willyshare.willykez.data.PulseDatabase
 import com.willyshare.willykez.data.StoragePrefs
@@ -62,6 +64,13 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- Real networking components ----
     val wifiDirect = WifiDirectManager(application)
+    /** BLE is discovery/bootstrap only - see [BleNearbyManager]'s own doc comment. It hands
+     *  its found devices' Wi-Fi Direct addresses to [WifiDirectManager.connectByAddress]; no
+     *  file bytes ever move over Bluetooth. */
+    val bleNearby = BleNearbyManager(application).apply {
+        localInfoProvider = { wifiDirect.thisDeviceName.value to wifiDirect.thisDeviceAddress.value }
+    }
+    val nearbyBleDevices: StateFlow<List<BleNearbyDevice>> = bleNearby.nearbyDevices
     private val fileSender = FileSenderClient(application)
     private val defaultReceiveDir: File
         get() = File(
@@ -85,7 +94,11 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         },
         onPullRequested = ::handleIncomingPullRequest,
         onHandshakeRequested = { pin, peerName, isPullIntent ->
-            requestLocalPinConfirm(pin, peerName, isPullIntent = isPullIntent)
+            if (com.willyshare.willykez.util.RecentDevicesStore.isTrustedByName(appContext, peerName)) {
+                true
+            } else {
+                requestLocalPinConfirm(pin, peerName, isPullIntent = isPullIntent)
+            }
         }
     )
 
@@ -208,10 +221,18 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 // the moment the QR screen opened. Only trust this signal when we are
                 // definitely the joining client of someone else's group.
                 if (info != null && info.groupFormed && !info.isGroupOwner && info.groupOwnerAddress != null) {
+                    connectWatchdogJob?.cancel()
+                    connectTimeoutMessage.value = null
                     targetIp.value = info.groupOwnerAddress.hostAddress
                     targetPort.value = TRANSFER_PORT
                     targetSource.value = TargetSource.WIFI_DIRECT
                     NotificationHelper.notifyConnectionStatus(appContext, connected = true, deviceName = targetName.value)
+
+                    pendingConnectDevice?.let { device ->
+                        com.willyshare.willykez.util.RecentDevicesStore.recordConnection(appContext, device.deviceName, device.deviceAddress)
+                        _recentDevices.value = com.willyshare.willykez.util.RecentDevicesStore.load(appContext)
+                        pendingConnectDevice = null
+                    }
 
                     // Real gotcha: Wi-Fi Direct's Group Owner negotiation is a genuine
                     // two-way negotiation. Setting groupOwnerIntent low is only a hint - on
@@ -278,13 +299,41 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         // background instead of only listening while a specific screen is on top.
         startReceiving()
         refreshMyQrPayload()
+        // Best-effort on process start - if Bluetooth permissions/adapter aren't ready yet,
+        // this quietly no-ops and refreshBle() (called from Send/Receive once their own
+        // permission prompts resolve) picks it up the moment they are.
+        bleNearby.start()
     }
 
     override fun onCleared() {
         super.onCleared()
         wifiDirect.stop()
         fileReceiver.stop()
+        bleNearby.stop()
         SparkTransferService.stopIfIdle(appContext)
+    }
+
+    /** Call once BLE permissions are confirmed granted (mirrors [startPeerDiscovery] for
+     *  Wi-Fi Direct) - safe to call repeatedly, [BleNearbyManager.start] is idempotent. */
+    fun refreshBle() = bleNearby.start()
+
+    /**
+     * Connects using an address a BLE sighting already resolved, skipping Wi-Fi Direct's own
+     * discovery cycle entirely - see [BleNearbyManager] and [WifiDirectManager.connectByAddress].
+     * Falls straight through to the same result callback / connectionInfo collector as a
+     * normal peer-list tap, so nothing downstream (role self-correction, recent-devices
+     * recording, notifications) needs to know which path found the peer.
+     */
+    fun connectToBleDevice(device: BleNearbyDevice, onStatus: (String) -> Unit) {
+        val address = device.wifiP2pAddress
+        if (address == null) {
+            onStatus("Still identifying this device\u2026")
+            return
+        }
+        wifiDirect.connectByAddress(address, device.name) { ok, msg ->
+            onStatus(msg)
+            if (ok) armConnectWatchdog()
+        }
     }
 
     /**
@@ -296,6 +345,8 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     fun resetConnection() {
         transferJob?.cancel()
         transferJob = null
+        connectWatchdogJob?.cancel()
+        connectTimeoutMessage.value = null
         wifiDirect.stopDiscovery()
         wifiDirect.disconnect()
         wifiDirect.stopGroup()
@@ -439,7 +490,48 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     fun connectToPeer(device: WifiP2pDevice, onStatus: (String) -> Unit) {
         targetName.value = device.deviceName
-        wifiDirect.connect(device) { _, message -> onStatus(message) }
+        pendingConnectDevice = device
+        wifiDirect.connect(device) { ok, message ->
+            onStatus(message)
+            if (ok) armConnectWatchdog()
+        }
+    }
+
+    /** How long a connect attempt is allowed to sit unresolved before this gives up on it -
+     *  Wi-Fi Direct's own negotiation timeout can otherwise leave the UI showing
+     *  "Connecting..." indefinitely with no way out short of force-closing the app. */
+    private val CONNECT_WATCHDOG_MS = 15_000L
+    private var connectWatchdogJob: kotlinx.coroutines.Job? = null
+
+    /** Surfaced by Send when [armConnectWatchdog] gives up on a stuck attempt - a distinct
+     *  signal from [wifiDirectError] since this is "we waited and it never resolved," not an
+     *  immediate API-level failure. */
+    val connectTimeoutMessage = MutableStateFlow<String?>(null)
+
+    private fun armConnectWatchdog() {
+        connectWatchdogJob?.cancel()
+        connectTimeoutMessage.value = null
+        connectWatchdogJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(CONNECT_WATCHDOG_MS)
+            if (targetSource.value != TargetSource.WIFI_DIRECT) {
+                wifiDirect.disconnect()
+                pendingConnectDevice = null
+                connectTimeoutMessage.value = "Connection timed out. Move closer and try again."
+            }
+        }
+    }
+
+    /** Devices this app has successfully connected to before, newest first - lets Send pin
+     *  a familiar device above the plain discovery list instead of it appearing anonymously
+     *  wherever discovery happens to rank it. */
+    private val _recentDevices = MutableStateFlow(com.willyshare.willykez.util.RecentDevicesStore.load(appContext))
+    val recentDevices: StateFlow<List<com.willyshare.willykez.util.RecentDevicesStore.RecentDevice>> = _recentDevices.asStateFlow()
+    private var pendingConnectDevice: WifiP2pDevice? = null
+
+    /** Called from Send's recent-devices list or Settings' trusted-devices row. */
+    fun setDeviceTrusted(address: String, trusted: Boolean) {
+        com.willyshare.willykez.util.RecentDevicesStore.setTrusted(appContext, address, trusted)
+        _recentDevices.value = com.willyshare.willykez.util.RecentDevicesStore.load(appContext)
     }
 
     // ---------- QR pairing (Xender-style alternate option) ----------

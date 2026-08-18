@@ -29,6 +29,55 @@ private const val SOCKET_BUF = 2 shl 20 // 2 MB - a 5GHz link can push a lot mor
 private const val PROGRESS_THROTTLE_MS = 120L
 
 /**
+ * Java's default TCP connect timeout (used by the plain `SocketChannel.open(SocketAddress)`
+ * this file used to call everywhere) can be 60-120+ seconds on some OEMs before it gives up -
+ * long enough that a person has no way to tell "still trying" from "will never work," and no
+ * feedback to act on either way. Every outbound connect in this file now goes through
+ * [connectWithTimeout] instead, which bounds that wait to something a UI can actually recover
+ * from.
+ */
+private const val CONNECT_TIMEOUT_MS = 8_000
+/** A link that's JUST finished Wi-Fi Direct group formation can have a brief window (typically
+ *  well under a second, but occasionally a couple of seconds on slower chipsets) where the
+ *  interface is up but routing/ARP hasn't settled yet - a connect attempt in that window fails
+ *  fast with "no route to host" even though the exact same attempt would succeed a moment
+ *  later. One short-delayed retry absorbs that window instead of surfacing it as a hard failure.
+ */
+private const val CONNECT_RETRY_DELAY_MS = 700L
+private const val MAX_CONNECT_ATTEMPTS = 3
+
+/** Opens [channel] to [hostIp]:[port] with a bounded connect timeout instead of the platform
+ *  default. Kept as a small local helper (rather than changing every call site's signature)
+ *  since every caller in this file already has a [SocketChannel] it wants connected in place. */
+private fun SocketChannel.connectBounded(hostIp: String, port: Int) {
+    socket().connect(InetSocketAddress(hostIp, port), CONNECT_TIMEOUT_MS)
+}
+
+/**
+ * Opens a fresh [SocketChannel] to [hostIp]:[port], retrying transient early-connection
+ * failures (timeout, connection refused, no route to host - all typical of a Wi-Fi Direct
+ * link that's still settling) up to [MAX_CONNECT_ATTEMPTS] times with a short delay between
+ * attempts. A successful connect returns immediately; a permanent failure (e.g. bad host)
+ * still surfaces after the last attempt rather than retrying forever.
+ */
+private fun openWithRetry(hostIp: String, port: Int): SocketChannel {
+    var lastError: Throwable? = null
+    repeat(MAX_CONNECT_ATTEMPTS) { attempt ->
+        try {
+            val channel = SocketChannel.open()
+            channel.connectBounded(hostIp, port)
+            return channel
+        } catch (t: Throwable) {
+            lastError = t
+            if (attempt < MAX_CONNECT_ATTEMPTS - 1) {
+                try { Thread.sleep(CONNECT_RETRY_DELAY_MS) } catch (_: InterruptedException) {}
+            }
+        }
+    }
+    throw lastError ?: java.io.IOException("Could not connect to $hostIp:$port")
+}
+
+/**
  * Every connection now opens with a single mode byte declaring the connecting party's intent,
  * BEFORE the existing totalCount/fileCount/file-data stream. This is what makes the QR
  * sender/receiver role swap possible without breaking the underlying transfer direction:
@@ -113,7 +162,9 @@ suspend fun performPinHandshake(
     onWaitingForPeer: suspend (pin: String) -> Unit
 ): Boolean = kotlinx.coroutines.withContext(Dispatchers.IO) {
     try {
-        SocketChannel.open(InetSocketAddress(hostIp, port)).use { channel ->
+        val channelToUse = SocketChannel.open()
+        channelToUse.connectBounded(hostIp, port)
+        channelToUse.use { channel ->
             onChannelReady(channel)
             channel.socket().soTimeout = HANDSHAKE_TIMEOUT_MS
             val dout = DataOutputStream(channel.socket().getOutputStream())
@@ -304,7 +355,7 @@ class FileReceiveServer(
             aggregator.reset()
             _senderConnected.value = true
             try {
-                SocketChannel.open(InetSocketAddress(hostIp, port)).use { channel ->
+                openWithRetry(hostIp, port).use { channel ->
                     val socket = channel.socket()
                     socket.tcpNoDelay = true
                     socket.receiveBufferSize = SOCKET_BUF
@@ -502,7 +553,7 @@ class FileSenderClient(private val context: Context) {
 
     private fun sendGroup(hostIp: String, totalCount: Int, files: List<SendableFile>): Boolean {
         return try {
-            SocketChannel.open(InetSocketAddress(hostIp, TRANSFER_PORT)).use { channel ->
+            openWithRetry(hostIp, TRANSFER_PORT).use { channel ->
                 val socket = channel.socket()
                 socket.tcpNoDelay = true
                 socket.sendBufferSize = SOCKET_BUF

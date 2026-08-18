@@ -20,6 +20,24 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Bluetooth LE: fast nearby-device discovery/bootstrap only - actual file transfer
+         always stays on Wi-Fi Direct. neverForLocation is accurate here: BLE scan results are
+         only ever used to spot a device and read its advertised name/Wi-Fi Direct address,
+         never to derive physical position, so this app doesn't need location permission on
+         Android 12+ just to scan. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+                     android:usesPermissionFlags="neverForLocation"
+                     tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"
+                     tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
+                     tools:targetApi="s" />
+    <!-- Pre-Android 12 equivalents - normal (install-time granted) permissions. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+                     android:maxSdkVersion="30" />
+
     <!-- Read files on the device for real transfers -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -50,6 +68,7 @@
                      tools:ignore="ScopedStorage" />
 
     <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 

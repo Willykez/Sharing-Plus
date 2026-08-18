@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,13 +74,35 @@ fun SendScreen(
 ) {
     val context = LocalContext.current
     val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        listOf(Manifest.permission.NEARBY_WIFI_DEVICES, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
+        listOf(
+            Manifest.permission.NEARBY_WIFI_DEVICES,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
     } else {
         listOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
     val permissionsState = rememberMultiplePermissionsState(requiredPermissions)
 
     val peers by viewModel.discoveredDevices.collectAsState()
+    // BLE-only sightings: spotted over Bluetooth in under a second, but Wi-Fi Direct's own
+    // discoverPeers() hasn't (yet, or ever, on some OEM stacks) surfaced them itself. Once a
+    // device shows up in `peers` too, it's dropped from here so it isn't listed twice.
+    val bleDevices by viewModel.nearbyBleDevices.collectAsState()
+    val wifiDirectAddresses = remember(peers) { peers.map { it.deviceAddress }.toSet() }
+    val bleOnlyDevices = remember(bleDevices, wifiDirectAddresses) {
+        bleDevices.filter { it.wifiP2pAddress != null && it.wifiP2pAddress !in wifiDirectAddresses }
+    }
+    val connectTimeoutMessage by viewModel.connectTimeoutMessage.collectAsState()
+    val recentDevices by viewModel.recentDevices.collectAsState()
+    val recentAddresses = remember(recentDevices) { recentDevices.map { it.address }.toSet() }
+    val trustedAddresses = remember(recentDevices) { recentDevices.filter { it.trusted }.map { it.address }.toSet() }
+    val sortedPeers = remember(peers, recentAddresses) {
+        peers.sortedByDescending { it.deviceAddress in recentAddresses }
+    }
     val isDiscovering by viewModel.isDiscovering.collectAsState()
     val targetIp by viewModel.targetIp.collectAsState()
     val targetSource by viewModel.targetSource.collectAsState()
@@ -88,6 +112,21 @@ fun SendScreen(
     var connectingTo by remember { mutableStateOf<String?>(null) }
     var wifiEnabled by remember { mutableStateOf(WifiEnableHelper.isWifiEnabled(context)) }
     var showQrSheet by remember { mutableStateOf(false) }
+    // Guards the auto-reconnect effect below so it only ever fires once per screen visit -
+    // without this, if the user manually backs out of an auto-started connection, the exact
+    // same trusted device reappearing in the next discovery tick would just re-trigger it.
+    var autoReconnectAttempted by remember { mutableStateOf(false) }
+
+    // "Recently connected" quick-reconnect, for trusted devices specifically: skip the tap
+    // entirely and dial the moment a device this user has explicitly trusted comes back into
+    // range, rather than making them find and tap it again in the list every time.
+    LaunchedEffect(sortedPeers, trustedAddresses) {
+        if (autoReconnectAttempted || targetIp != null || connectingTo != null) return@LaunchedEffect
+        val trustedPeer = sortedPeers.firstOrNull { it.deviceAddress in trustedAddresses } ?: return@LaunchedEffect
+        autoReconnectAttempted = true
+        connectingTo = trustedPeer.deviceAddress
+        viewModel.connectToPeer(trustedPeer) { msg -> statusMessage = msg }
+    }
 
     // Re-check whenever the screen resumes (e.g. coming back from the Wi-Fi panel/Settings).
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
@@ -115,10 +154,18 @@ fun SendScreen(
         // ~2 minute window would simply never be found. Re-issuing the call periodically
         // is the standard workaround; it's a cheap no-op if a scan is already in progress.
         if (permissionsState.allPermissionsGranted) {
+            viewModel.refreshBle()
             while (true) {
                 viewModel.startPeerDiscovery()
                 kotlinx.coroutines.delay(25_000)
             }
+        }
+    }
+
+    LaunchedEffect(connectTimeoutMessage) {
+        connectTimeoutMessage?.let {
+            statusMessage = it
+            connectingTo = null
         }
     }
 
@@ -231,7 +278,31 @@ fun SendScreen(
                         )
                     }
 
-                    if (peers.isEmpty()) {
+                    if (bleOnlyDevices.isNotEmpty()) {
+                        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                            Text(
+                                text = "DETECTED VIA BLUETOOTH",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp,
+                                color = SleekOnSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            bleOnlyDevices.forEach { device ->
+                                BlePeerRow(
+                                    device = device,
+                                    isConnecting = connectingTo == device.bleAddress,
+                                    onClick = {
+                                        connectingTo = device.bleAddress
+                                        viewModel.connectToBleDevice(device) { msg -> statusMessage = msg }
+                                    },
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (peers.isEmpty() && bleOnlyDevices.isEmpty()) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -267,10 +338,15 @@ fun SendScreen(
                                 .padding(horizontal = 20.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            items(peers, key = { it.deviceAddress }) { device ->
+                            items(sortedPeers, key = { it.deviceAddress }) { device ->
                                 PeerRow(
                                     device = device,
                                     isConnecting = connectingTo == device.deviceAddress,
+                                    isRecent = device.deviceAddress in recentAddresses,
+                                    isTrusted = device.deviceAddress in trustedAddresses,
+                                    onToggleTrust = if (device.deviceAddress in recentAddresses) {
+                                        { viewModel.setDeviceTrusted(device.deviceAddress, device.deviceAddress !in trustedAddresses) }
+                                    } else null,
                                     modifier = Modifier.animateItem(),
                                     onClick = {
                                         connectingTo = device.deviceAddress
@@ -307,7 +383,15 @@ fun SendScreen(
 }
 
 @Composable
-private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun PeerRow(
+    device: WifiP2pDevice,
+    isConnecting: Boolean,
+    isRecent: Boolean = false,
+    isTrusted: Boolean = false,
+    onToggleTrust: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     val shape = RoundedCornerShape(18.dp)
     val accentColor = SleekPrimary
     val rowBg by androidx.compose.animation.animateColorAsState(
@@ -344,7 +428,20 @@ private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, modifier: Modi
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column {
-                Text(device.deviceName.ifBlank { "Unknown device" }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(device.deviceName.ifBlank { "Unknown device" }, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+                    if (isRecent && !isConnecting) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(SleekPrimary.copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("RECENT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = SleekPrimary, letterSpacing = 0.5.sp)
+                        }
+                    }
+                }
                 Text(
                     text = if (isConnecting) "Connecting\u2026" else "Wi-Fi Direct \u00B7 ${device.deviceAddress}",
                     fontSize = 11.sp,
@@ -354,6 +451,68 @@ private fun PeerRow(device: WifiP2pDevice, isConnecting: Boolean, modifier: Modi
         }
         if (isConnecting) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = SleekPrimary)
+        } else if (onToggleTrust != null) {
+            Icon(
+                imageVector = if (isTrusted) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                contentDescription = if (isTrusted) "Trusted - tap to remove" else "Tap to trust this device",
+                tint = if (isTrusted) SleekPrimary else SleekOnSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .size(22.dp)
+                    .clickable { onToggleTrust() }
+            )
+        }
+    }
+}
+
+/** A device spotted over BLE whose Wi-Fi Direct address is already known - tapping dials
+ *  [PulseViewModel.connectToBleDevice] directly, skipping `discoverPeers()` entirely. If the
+ *  GATT read hasn't resolved an address yet, this stays disabled rather than dialing nothing. */
+@Composable
+private fun BlePeerRow(
+    device: com.willyshare.willykez.net.BleNearbyDevice,
+    isConnecting: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(16.dp)
+    val canConnect = device.wifiP2pAddress != null
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (isConnecting) SleekPrimaryContainer.copy(alpha = 0.5f) else SleekCard)
+            .border(1.dp, SleekOutline.copy(alpha = 0.3f), shape)
+            .clickable(enabled = !isConnecting && canConnect) { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(SleekPrimaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(com.willyshare.willykez.ui.PulseIcons.Device, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(17.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(device.name.ifBlank { "Unknown device" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+                Text(
+                    text = when {
+                        isConnecting -> "Connecting\u2026"
+                        canConnect -> "Bluetooth \u00B7 tap to connect"
+                        else -> "Identifying\u2026"
+                    },
+                    fontSize = 11.sp,
+                    color = if (isConnecting) SleekPrimary else SleekOnSurfaceVariant
+                )
+            }
+        }
+        if (isConnecting) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = SleekPrimary)
         }
     }
 }
