@@ -54,6 +54,10 @@ data class ThemeState(
     val customSeeds: List<String> = emptyList(),
     val activeCustomSeed: String = "",
     val useGradient: Boolean = true,
+    /** Slow ambient glow-drift behind screens (see [com.willyshare.willykez.ui.AuroraBackground]).
+     *  Independent of [useGradient] - the gradient's static base layer always renders at a
+     *  minimum level regardless of either toggle; this only controls whether it moves. */
+    val useBackgroundEffects: Boolean = true,
     val shadingIntensity: Float = DEFAULT_SHADING_INTENSITY,
 ) {
     val useEnhancedShading: Boolean
@@ -70,6 +74,7 @@ class ThemePrefs(
         val CUSTOM_SEEDS = stringPreferencesKey("custom_seeds")
         val ACTIVE_CUSTOM_SEED = stringPreferencesKey("active_custom_seed")
         val USE_GRADIENT = booleanPreferencesKey("use_gradient")
+        val USE_BACKGROUND_EFFECTS = booleanPreferencesKey("use_background_effects")
         val SHADING_INTENSITY_FACTOR = floatPreferencesKey("shading_intensity_factor")
     }
 
@@ -88,6 +93,7 @@ class ThemePrefs(
                 customSeeds = decodeSeeds(p[Keys.CUSTOM_SEEDS].orEmpty()),
                 activeCustomSeed = normalizeCustomSeed(p[Keys.ACTIVE_CUSTOM_SEED].orEmpty()).orEmpty(),
                 useGradient = p[Keys.USE_GRADIENT] ?: true,
+                useBackgroundEffects = p[Keys.USE_BACKGROUND_EFFECTS] ?: true,
                 shadingIntensity = p[Keys.SHADING_INTENSITY_FACTOR] ?: DEFAULT_SHADING_INTENSITY,
             )
         }
@@ -148,6 +154,10 @@ class ThemePrefs(
 
     suspend fun setUseGradient(value: Boolean) {
         context.themePrefsDataStore.edit { it[Keys.USE_GRADIENT] = value }
+    }
+
+    suspend fun setUseBackgroundEffects(value: Boolean) {
+        context.themePrefsDataStore.edit { it[Keys.USE_BACKGROUND_EFFECTS] = value }
     }
 
     suspend fun setShadingIntensity(intensity: Float) {

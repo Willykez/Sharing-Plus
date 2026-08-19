@@ -174,7 +174,7 @@ fun AppearanceSection(
                     )
                 }
             }
-            GroupedListItem(position = GroupPosition.LAST) {
+            GroupedListItem(position = GroupPosition.MIDDLE) {
                 AppearanceSettingsToggleItem(
                     title = "Gradient background",
                     subtitle = "Soft accent wash behind screens",
@@ -187,6 +187,21 @@ fun AppearanceSection(
                         }
                     },
                     onCheckedChange = { scope.launch { prefs.setUseGradient(it) } },
+                )
+            }
+            GroupedListItem(position = GroupPosition.LAST) {
+                AppearanceSettingsToggleItem(
+                    title = "Background animation",
+                    subtitle = "Slow ambient glow drifting behind screens - a subtle depth effect, not a moving bar",
+                    checked = state.useBackgroundEffects && !blackThemeEffectsDisabled,
+                    enabled = !blackThemeEffectsDisabled,
+                    onDisabledClick = {
+                        scope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar(blackThemeEffectsDisabledMessage)
+                        }
+                    },
+                    onCheckedChange = { scope.launch { prefs.setUseBackgroundEffects(it) } },
                 )
             }
         }

@@ -512,27 +512,62 @@ fun RadarPulseRing(sizeDp: Int, delayMillis: Int = 0, durationMillis: Int = 2800
  * The app's background signature - deliberately NOT the soft violet/cyan blur-blob look this
  * screen used to have (that was hardcoded to VioletAccent/CyanBright and ignored whichever of
  * the 8 curated palettes - or Material You, or a custom color - the person actually picked in
- * Settings). This draws a fine dot-grid mesh plus a diagonal scan-line sweep, entirely from the
- * live SleekPrimary/SleekSecondary tokens, so it's correct under every theme AND reads as a
- * distinct "radar/mesh" identity rather than ambient glow.
+ * Settings). Layers, from back to front: a fine dot-grid mesh, a minimum-level static
+ * gradient wash (present at EVERY setting so the background never goes flat/dead), and -
+ * unless turned off in Appearance - two soft glow orbs drifting along slow, independent
+ * looping paths for ambient depth. That drift replaces an earlier diagonal scan-line sweep
+ * that crossed the whole screen like a moving bar; this reads as atmosphere instead.
+ *
+ * Two independent Appearance toggles govern this, both read live via CompositionLocal so no
+ * caller needs to pass anything through:
+ *  - [LocalUseGradient] ("Gradient background") controls INTENSITY - off drops to a faint
+ *    baseline rather than removing the gradient outright, matching the expectation that
+ *    turning gradient off shouldn't make the screen look broken/flat.
+ *  - [LocalUseBackgroundEffects] ("Background animation") controls MOTION only - off freezes
+ *    the orbs in place at whatever intensity the gradient toggle set, rather than affecting
+ *    how visible the gradient itself is.
  */
 @Composable
 fun AuroraBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val gradientOn = LocalUseGradient.current
+    val effectsOn = LocalUseBackgroundEffects.current
+
     val transition = rememberInfiniteTransition(label = "mesh_field")
-    val sweep by transition.animateFloat(
-        initialValue = -0.3f, targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(tween(6500, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "sweep"
-    )
     val pulse by transition.animateFloat(
         initialValue = 0.6f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(3200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "pulse"
     )
+    // Two differently-timed phases drive the orbs along independent looping paths (a
+    // Lissajous-style wander, not a straight line) for an organic, non-repetitive-looking
+    // drift. Kept running unconditionally - cheap, GPU-idle - and only its rendered
+    // CONTRIBUTION is zeroed out below when effects are off, which avoids ever having to
+    // conditionally call an animation composable itself.
+    val phaseA by transition.animateFloat(
+        initialValue = 0f, targetValue = (2 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(17000, easing = LinearEasing), RepeatMode.Restart),
+        label = "phaseA"
+    )
+    val phaseB by transition.animateFloat(
+        initialValue = 0f, targetValue = (2 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(23000, easing = LinearEasing), RepeatMode.Restart),
+        label = "phaseB"
+    )
+    val effectivePhaseA = if (effectsOn) phaseA else 0f
+    val effectivePhaseB = if (effectsOn) phaseB else 2.4f // fixed, non-zero so the two orbs don't overlap when frozen
+
     val primary = SleekPrimary
     val secondary = SleekSecondary
     val bg = SleekBg
     val dotColor = SleekOutline
+
+    // "Off" drops to a faint baseline rather than vanishing - the ask was for the gradient to
+    // never fully disappear, only dim. "On" is boosted well beyond the old values, which read
+    // as too faint to register as a gradient at all.
+    val intensity = if (gradientOn) 1f else 0.4f
+    val cornerAlphaPrimary = 0.34f * intensity
+    val cornerAlphaSecondary = 0.28f * intensity
+    val orbAlpha = 0.17f * intensity
 
     Box(modifier = modifier.fillMaxSize().background(bg)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -551,26 +586,36 @@ fun AuroraBackground(modifier: Modifier = Modifier, content: @Composable BoxScop
                 gy += spacing
             }
 
-            // Two restrained corner glows in the ACTUAL theme colors, so Ember/Ocean/Iris/etc
-            // all look correct here, not just whichever hue happened to be hardcoded before.
+            // Static corner glows - the gradient's minimum-level baseline, present at every
+            // combination of the two toggles above.
             drawCircle(
-                brush = Brush.radialGradient(listOf(primary.copy(alpha = 0.22f * pulse), Color.Transparent), radius = w * 0.55f),
+                brush = Brush.radialGradient(listOf(primary.copy(alpha = cornerAlphaPrimary * pulse), Color.Transparent), radius = w * 0.55f),
                 radius = w * 0.55f,
                 center = Offset(w * 0.06f, h * 0.04f)
             )
             drawCircle(
-                brush = Brush.radialGradient(listOf(secondary.copy(alpha = 0.18f), Color.Transparent), radius = w * 0.5f),
+                brush = Brush.radialGradient(listOf(secondary.copy(alpha = cornerAlphaSecondary), Color.Transparent), radius = w * 0.5f),
                 radius = w * 0.5f,
                 center = Offset(w * 0.96f, h * 0.92f)
             )
 
-            // Diagonal scan sweep - a deliberate "radar pass" motion instead of ambient drift.
-            val sweepX = w * sweep
-            drawLine(
-                brush = Brush.linearGradient(listOf(Color.Transparent, primary.copy(alpha = 0.30f), Color.Transparent)),
-                start = Offset(sweepX, -h * 0.2f),
-                end = Offset(sweepX - w * 0.35f, h * 1.2f),
-                strokeWidth = w * 0.16f
+            // Ambient drifting glow orbs - the "amazing" replacement for the old hard-edged
+            // diagonal sweep bar. Large, soft-edged, low-alpha, and moving along a slow
+            // looping path rather than a straight crossing - reads as depth, not a shape
+            // sliding across the screen.
+            val orb1X = w * (0.5f + 0.38f * kotlin.math.sin(effectivePhaseA))
+            val orb1Y = h * (0.45f + 0.32f * kotlin.math.cos(effectivePhaseA * 0.7f))
+            drawCircle(
+                brush = Brush.radialGradient(listOf(primary.copy(alpha = orbAlpha), Color.Transparent), radius = w * 0.42f),
+                radius = w * 0.42f,
+                center = Offset(orb1X, orb1Y)
+            )
+            val orb2X = w * (0.5f + 0.34f * kotlin.math.cos(effectivePhaseB * 0.8f))
+            val orb2Y = h * (0.55f + 0.3f * kotlin.math.sin(effectivePhaseB))
+            drawCircle(
+                brush = Brush.radialGradient(listOf(secondary.copy(alpha = orbAlpha), Color.Transparent), radius = w * 0.38f),
+                radius = w * 0.38f,
+                center = Offset(orb2X, orb2Y)
             )
         }
         content()

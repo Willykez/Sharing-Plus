@@ -56,6 +56,10 @@ fun MyApplicationTheme(
     val black = themeState.themeMode == ThemeMode.BLACK
     val effectiveUseGradient = themeState.useGradient && !black
     val reducedMotion = rememberSystemReducedMotionEnabled()
+    // Also honors the system's "remove animations" accessibility setting, same as every other
+    // motion in the app (see LocalReducedMotion) - a person who's turned that on system-wide
+    // shouldn't need to separately find this toggle too.
+    val effectiveUseBackgroundEffects = themeState.useBackgroundEffects && !black && !reducedMotion
 
     val colorResolution =
         rememberResolvedColorScheme(
@@ -88,6 +92,7 @@ fun MyApplicationTheme(
         LocalSleekPalette provides sleekPalette,
         LocalIsDark provides darkTheme,
         LocalUseGradient provides effectiveUseGradient,
+        LocalUseBackgroundEffects provides effectiveUseBackgroundEffects,
         LocalUseEnhancedShading provides themeState.useEnhancedShading,
         LocalThemeState provides themeState,
         LocalReducedMotion provides reducedMotion,
