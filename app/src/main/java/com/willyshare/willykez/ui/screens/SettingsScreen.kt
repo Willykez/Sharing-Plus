@@ -104,6 +104,7 @@ fun SettingsScreen(
     val deviceName by viewModel.thisDeviceName.collectAsState()
     val context = LocalContext.current
     val wifiEnabled by viewModel.wifiDirect.isWifiP2pEnabled.collectAsState()
+    val bleFastDiscoveryEnabled by viewModel.bleFastDiscoveryEnabled.collectAsState()
     var batteryExempted by remember {
         mutableStateOf(com.willyshare.willykez.util.BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
     }
@@ -222,6 +223,30 @@ fun SettingsScreen(
                                                 // avoids yanking Wi-Fi out from under an active transfer
                                                 // with a single misplaced tap.
                                             },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = SleekPrimary,
+                                            ),
+                                        )
+                                    }
+                                )
+                            }
+                        },
+                        { position ->
+                            GroupedListItem(position = position) {
+                                SettingsRow(
+                                    icon = com.willyshare.willykez.ui.PulseIcons.Bluetooth,
+                                    title = "Fast discovery (Bluetooth)",
+                                    subtitle = if (bleFastDiscoveryEnabled) {
+                                        "Finds nearby devices instantly over Bluetooth, before Wi-Fi Direct catches up"
+                                    } else {
+                                        "Off \u2013 discovery relies on Wi-Fi Direct alone"
+                                    },
+                                    onClick = { viewModel.setBleFastDiscoveryEnabled(!bleFastDiscoveryEnabled) },
+                                    trailing = {
+                                        Switch(
+                                            checked = bleFastDiscoveryEnabled,
+                                            onCheckedChange = { viewModel.setBleFastDiscoveryEnabled(it) },
                                             colors = SwitchDefaults.colors(
                                                 checkedThumbColor = Color.White,
                                                 checkedTrackColor = SleekPrimary,

@@ -33,8 +33,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,7 +51,19 @@ enum class TargetSource { WIFI_DIRECT, QR_PAIR, NONE }
  * same question. This is step one of the state-machine work; screens can adopt it
  * incrementally.
  */
-enum class LinkState { IDLE, CONNECTED, TRANSFERRING }
+enum class LinkState { IDLE, RESOLVING, CONNECTED, TRANSFERRING }
+
+/** Intermediate tuple for the 5-way [combine] below - kotlinx's typed `combine` overloads only
+ *  go up to 5 flows, and a 6th (BLE resolving signal) needs to fold in afterward. */
+private data class LinkPhase(
+    val source: TargetSource,
+    val hostPeer: Boolean,
+    val senderConn: Boolean,
+    val sendTotal: Long,
+    val sendComplete: Boolean,
+    val recvTotal: Long,
+    val recvComplete: Boolean
+)
 
 /** Matches FileTransfer.kt's own handshake socket timeout, so the local confirm prompt and
  *  the underlying socket read time out around the same moment rather than one hanging on
@@ -69,7 +81,16 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
      *  its found devices' Wi-Fi Direct addresses to [WifiDirectManager.connectByAddress]; no
      *  file bytes ever move over Bluetooth. */
     val bleNearby = BleNearbyManager(application).apply {
-        localInfoProvider = { wifiDirect.thisDeviceName.value to wifiDirect.thisDeviceAddress.value }
+        localInfoProvider = {
+            com.willyshare.willykez.net.LocalBleInfo(
+                name = wifiDirect.thisDeviceName.value,
+                wifiP2pAddress = wifiDirect.thisDeviceAddress.value,
+                // Only advertise "ready" while actually listening and not already mid-transfer
+                // with someone else - avoids a sender's BLE scan showing this device as an
+                // easy target when it would really just queue behind an active transfer.
+                readyToReceive = fileReceiver.isListening.value && !fileReceiver.senderConnected.value
+            )
+        }
     }
     val nearbyBleDevices: StateFlow<List<BleNearbyDevice>> = bleNearby.nearbyDevices
     private val fileSender = FileSenderClient(application)
@@ -82,6 +103,10 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     /** Where a custom "save received files to" folder currently points, or null for the app default. */
     val receiveTreeUri: StateFlow<String?> = storagePrefs.receiveTreeUri
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** "Fast discovery (Bluetooth)" from Settings - on by default. See [setBleFastDiscoveryEnabled]. */
+    val bleFastDiscoveryEnabled: StateFlow<Boolean> = storagePrefs.bleFastDiscoveryEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private val fileReceiver = FileReceiveServer(
         targetProvider = {
@@ -202,13 +227,23 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
     val isFastConnectSupported: Boolean get() = wifiDirect.isFastConnectSupported
 
     /** One combined signal for "what's going on right now," usable from any screen. */
+    /** True while a BLE sighting exists whose Wi-Fi Direct address hasn't resolved yet via
+     *  GATT - drives [LinkState.RESOLVING] so screens can show a distinct "found, identifying…"
+     *  treatment instead of lumping it in with plain idle/scanning. */
+    private val hasUnresolvedBleSighting: StateFlow<Boolean> = nearbyBleDevices
+        .map { list -> list.any { it.wifiP2pAddress == null } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val linkState: StateFlow<LinkState> = combine(
         targetSource, wifiDirect.hostHasPeer, fileReceiver.senderConnected, sendProgress, receiveProgress
     ) { source, hostPeer, senderConn, sendP, recvP ->
+        LinkPhase(source, hostPeer, senderConn, sendP.overallTotal, sendP.isComplete, recvP.overallTotal, recvP.isComplete)
+    }.combine(hasUnresolvedBleSighting) { phase, resolving ->
         when {
-            (sendP.overallTotal > 0 && !sendP.isComplete) || (recvP.overallTotal > 0 && !recvP.isComplete) ->
+            (phase.sendTotal > 0 && !phase.sendComplete) || (phase.recvTotal > 0 && !phase.recvComplete) ->
                 LinkState.TRANSFERRING
-            source != TargetSource.NONE || hostPeer || senderConn -> LinkState.CONNECTED
+            phase.source != TargetSource.NONE || phase.hostPeer || phase.senderConn -> LinkState.CONNECTED
+            resolving -> LinkState.RESOLVING
             else -> LinkState.IDLE
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LinkState.IDLE)
@@ -300,10 +335,14 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         // background instead of only listening while a specific screen is on top.
         startReceiving()
         refreshMyQrPayload()
-        // Best-effort on process start - if Bluetooth permissions/adapter aren't ready yet,
-        // this quietly no-ops and refreshBle() (called from Send/Receive once their own
-        // permission prompts resolve) picks it up the moment they are.
-        bleNearby.start()
+        // Reactive rather than a one-shot call at init{}: the persisted preference loads
+        // asynchronously from DataStore, and this also handles the user flipping the
+        // Settings toggle mid-session without needing a separate observer there too.
+        viewModelScope.launch {
+            bleFastDiscoveryEnabled.collect { enabled ->
+                if (enabled) bleNearby.start() else bleNearby.stop()
+            }
+        }
     }
 
     override fun onCleared() {
@@ -316,7 +355,16 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Call once BLE permissions are confirmed granted (mirrors [startPeerDiscovery] for
      *  Wi-Fi Direct) - safe to call repeatedly, [BleNearbyManager.start] is idempotent. */
-    fun refreshBle() = bleNearby.start()
+    fun refreshBle() {
+        if (bleFastDiscoveryEnabled.value) bleNearby.start()
+    }
+
+    /** Bound to the "Fast discovery (Bluetooth)" switch in Settings. Persists the choice and
+     *  starts/stops BLE immediately rather than waiting for the next app launch. */
+    fun setBleFastDiscoveryEnabled(enabled: Boolean) {
+        viewModelScope.launch { storagePrefs.setBleFastDiscoveryEnabled(enabled) }
+        if (enabled) bleNearby.start() else bleNearby.stop()
+    }
 
     /**
      * Connects using an address a BLE sighting already resolved, skipping Wi-Fi Direct's own

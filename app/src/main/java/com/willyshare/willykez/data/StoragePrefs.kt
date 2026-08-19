@@ -12,6 +12,7 @@ private val Context.storagePrefsDataStore by preferencesDataStore(name = "spark_
 class StoragePrefs(private val context: Context) {
     private object Keys {
         val RECEIVE_TREE_URI = stringPreferencesKey("receive_tree_uri")
+        val BLE_FAST_DISCOVERY = androidx.datastore.preferences.core.booleanPreferencesKey("ble_fast_discovery")
     }
 
     /** The saved SAF tree Uri string for received files, or null if using the app default. */
@@ -26,5 +27,14 @@ class StoragePrefs(private val context: Context) {
                 prefs[Keys.RECEIVE_TREE_URI] = uriString
             }
         }
+    }
+
+    /** "Fast discovery (Bluetooth)" toggle - on by default. Turning it off stops BLE
+     *  advertising/scanning entirely; discovery falls back to Wi-Fi Direct alone. */
+    val bleFastDiscoveryEnabled: Flow<Boolean> =
+        context.storagePrefsDataStore.data.map { it[Keys.BLE_FAST_DISCOVERY] ?: true }
+
+    suspend fun setBleFastDiscoveryEnabled(enabled: Boolean) {
+        context.storagePrefsDataStore.edit { prefs -> prefs[Keys.BLE_FAST_DISCOVERY] = enabled }
     }
 }

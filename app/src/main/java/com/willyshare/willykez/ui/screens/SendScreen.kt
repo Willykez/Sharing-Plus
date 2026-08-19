@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -92,6 +93,7 @@ fun SendScreen(
     // discoverPeers() hasn't (yet, or ever, on some OEM stacks) surfaced them itself. Once a
     // device shows up in `peers` too, it's dropped from here so it isn't listed twice.
     val bleDevices by viewModel.nearbyBleDevices.collectAsState()
+    val bleActive by viewModel.bleNearby.isActive.collectAsState()
     val wifiDirectAddresses = remember(peers) { peers.map { it.deviceAddress }.toSet() }
     val bleOnlyDevices = remember(bleDevices, wifiDirectAddresses) {
         bleDevices.filter { it.wifiP2pAddress != null && it.wifiP2pAddress !in wifiDirectAddresses }
@@ -164,7 +166,6 @@ fun SendScreen(
 
     LaunchedEffect(connectTimeoutMessage) {
         connectTimeoutMessage?.let {
-            statusMessage = it
             connectingTo = null
         }
     }
@@ -232,6 +233,13 @@ fun SendScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(contentAlignment = Alignment.Center) {
+                            // Two rings at different speeds - the fast, tight one reflects BLE
+                            // sensing (near-instant), the slower wide one is Wi-Fi Direct's own
+                            // discovery cycle. Two speeds read as "two radios searching"
+                            // without needing any extra text.
+                            if (bleActive) {
+                                RadarPulseRing(50, 0, durationMillis = 1400)
+                            }
                             if (isDiscovering) {
                                 RadarPulseRing(76, 0)
                                 RadarPulseRing(58, 700)
@@ -253,52 +261,55 @@ fun SendScreen(
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
+                            val totalCount = peers.size + bleOnlyDevices.size
                             Text(
-                                text = if (peers.isEmpty()) (if (isDiscovering) "Scanning\u2026" else "No devices yet") else "${peers.size} device${if (peers.size == 1) "" else "s"} nearby",
+                                text = if (totalCount == 0) (if (isDiscovering) "Scanning\u2026" else "No devices yet") else "$totalCount device${if (totalCount == 1) "" else "s"} nearby",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Black,
                                 color = SleekOnSurface
                             )
-                            Text(
-                                text = "Wi-Fi Direct \u00B7 broadcasting as visible",
-                                fontSize = 11.sp,
-                                color = SleekOnSurfaceVariant
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = com.willyshare.willykez.ui.PulseIcons.Broadcasting,
+                                    contentDescription = null,
+                                    tint = SleekOnSurfaceVariant,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                if (bleActive) {
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Icon(
+                                        imageVector = com.willyshare.willykez.ui.PulseIcons.Bluetooth,
+                                        contentDescription = null,
+                                        tint = SleekOnSurfaceVariant,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = if (bleActive) "Bluetooth + Wi-Fi Direct \u00B7 visible nearby" else "Wi-Fi Direct \u00B7 broadcasting as visible",
+                                    fontSize = 11.sp,
+                                    color = SleekOnSurfaceVariant
+                                )
+                            }
                         }
                     }
 
-                    statusMessage?.let {
-                        Text(
-                            text = it,
-                            fontSize = 13.sp,
-                            color = SleekOnSurfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 4.dp)
+                    if (connectTimeoutMessage != null) {
+                        ConnectTimeoutCard(
+                            message = connectTimeoutMessage!!,
+                            onShowQr = { onNavigate("my_qr") },
+                            onDismiss = { viewModel.connectTimeoutMessage.value = null }
                         )
-                    }
-
-                    if (bleOnlyDevices.isNotEmpty()) {
-                        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                    } else {
+                        statusMessage?.let {
                             Text(
-                                text = "DETECTED VIA BLUETOOTH",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                color = SleekOnSurfaceVariant
+                                text = it,
+                                fontSize = 13.sp,
+                                color = SleekOnSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 4.dp)
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            bleOnlyDevices.forEach { device ->
-                                BlePeerRow(
-                                    device = device,
-                                    isConnecting = connectingTo == device.bleAddress,
-                                    onClick = {
-                                        connectingTo = device.bleAddress
-                                        viewModel.connectToBleDevice(device) { msg -> statusMessage = msg }
-                                    },
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
-                            }
                         }
                     }
 
@@ -317,7 +328,7 @@ fun SendScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Make sure Wi-Fi is on and the receiver has Sharing Plus open on the Receive screen.",
+                                text = "Make sure Wi-Fi and Bluetooth are on, and the receiver has Sharing Plus open on the Receive screen.",
                                 fontSize = 12.sp,
                                 color = SleekOnSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 32.dp)
@@ -332,6 +343,11 @@ fun SendScreen(
                             }
                         }
                     } else {
+                        // One unified list, not two - Wi-Fi Direct-resolved devices (trusted
+                        // first) followed by anything only BLE has found so far. A per-row
+                        // badge communicates which radio found each device instead of a
+                        // section split, matching how Quick Share never exposes "which radio"
+                        // as a separate list.
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -351,6 +367,17 @@ fun SendScreen(
                                     onClick = {
                                         connectingTo = device.deviceAddress
                                         viewModel.connectToPeer(device) { msg -> statusMessage = msg }
+                                    }
+                                )
+                            }
+                            items(bleOnlyDevices, key = { it.bleAddress }) { device ->
+                                BlePeerRow(
+                                    device = device,
+                                    isConnecting = connectingTo == device.bleAddress,
+                                    modifier = Modifier.animateItem(),
+                                    onClick = {
+                                        connectingTo = device.bleAddress
+                                        viewModel.connectToBleDevice(device) { msg -> statusMessage = msg }
                                     }
                                 )
                             }
@@ -378,6 +405,36 @@ fun SendScreen(
             viewModel = viewModel,
             onDismiss = { showQrSheet = false },
             onNavigate = onNavigate
+        )
+    }
+}
+
+/** The three/four-state connection badge (recommendation: a visible dot + label per row
+ *  instead of only RSSI or a bare "Connecting..." string) - shared by [PeerRow] and
+ *  [BlePeerRow] so a Wi-Fi Direct-resolved device and a BLE-only sighting read as the same
+ *  kind of status, just with a different source noted after the dash. */
+private enum class PeerBadgeState(val label: String, val color: @Composable () -> Color) {
+    SPOTTED("Spotted", { SleekOnSurfaceVariant }),
+    NEARBY("Nearby", { SleekOnSurfaceVariant }),
+    BUSY("Busy right now", { Color(0xFFB26A00) }),
+    CONNECTING("Connecting\u2026", { SleekPrimary }),
+}
+
+@Composable
+private fun PeerStatusRow(state: PeerBadgeState, source: String) {
+    val dotColor = state.color()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = "${state.label} \u00B7 $source",
+            fontSize = 11.sp,
+            color = if (state == PeerBadgeState.CONNECTING) SleekPrimary else SleekOnSurfaceVariant
         )
     }
 }
@@ -442,10 +499,9 @@ private fun PeerRow(
                         }
                     }
                 }
-                Text(
-                    text = if (isConnecting) "Connecting\u2026" else "Wi-Fi Direct \u00B7 ${device.deviceAddress}",
-                    fontSize = 11.sp,
-                    color = if (isConnecting) SleekPrimary else SleekOnSurfaceVariant
+                PeerStatusRow(
+                    state = if (isConnecting) PeerBadgeState.CONNECTING else PeerBadgeState.NEARBY,
+                    source = "Wi-Fi Direct"
                 )
             }
         }
@@ -475,7 +531,13 @@ private fun BlePeerRow(
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(16.dp)
-    val canConnect = device.wifiP2pAddress != null
+    val canConnect = device.wifiP2pAddress != null && device.readyToReceive
+    val badgeState = when {
+        isConnecting -> PeerBadgeState.CONNECTING
+        device.wifiP2pAddress == null -> PeerBadgeState.SPOTTED
+        !device.readyToReceive -> PeerBadgeState.BUSY
+        else -> PeerBadgeState.NEARBY
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -483,7 +545,8 @@ private fun BlePeerRow(
             .background(if (isConnecting) SleekPrimaryContainer.copy(alpha = 0.5f) else SleekCard)
             .border(1.dp, SleekOutline.copy(alpha = 0.3f), shape)
             .clickable(enabled = !isConnecting && canConnect) { onClick() }
-            .padding(12.dp),
+            .padding(12.dp)
+            .alpha(if (canConnect || isConnecting) 1f else 0.55f),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -495,24 +558,61 @@ private fun BlePeerRow(
                     .background(SleekPrimaryContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(com.willyshare.willykez.ui.PulseIcons.Device, contentDescription = null, tint = SleekPrimary, modifier = Modifier.size(17.dp))
+                Icon(
+                    imageVector = if (isConnecting) com.willyshare.willykez.ui.PulseIcons.BluetoothConnected else com.willyshare.willykez.ui.PulseIcons.BluetoothSearching,
+                    contentDescription = null,
+                    tint = SleekPrimary,
+                    modifier = Modifier.size(17.dp)
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(device.name.ifBlank { "Unknown device" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
-                Text(
-                    text = when {
-                        isConnecting -> "Connecting\u2026"
-                        canConnect -> "Bluetooth \u00B7 tap to connect"
-                        else -> "Identifying\u2026"
-                    },
-                    fontSize = 11.sp,
-                    color = if (isConnecting) SleekPrimary else SleekOnSurfaceVariant
-                )
+                PeerStatusRow(state = badgeState, source = "Bluetooth")
             }
         }
         if (isConnecting) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = SleekPrimary)
+        }
+    }
+}
+
+/** Shown when [PulseViewModel]'s connect watchdog gives up on a stuck attempt - surfaces the
+ *  proven QR-pairing fallback right here instead of just saying "try again" and leaving the
+ *  person to rediscover that path on their own. */
+@Composable
+private fun ConnectTimeoutCard(message: String, onShowQr: () -> Unit, onDismiss: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .clip(shape)
+            .background(Color(0xFFB26A00).copy(alpha = 0.10f))
+            .border(1.dp, Color(0xFFB26A00).copy(alpha = 0.3f), shape)
+            .padding(14.dp)
+    ) {
+        Text(message, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SleekOnSurface)
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = onShowQr,
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SleekPrimary),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Filled.QrCode2, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Show my QR instead", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = SleekOnSurfaceVariant),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text("Dismiss", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
         }
     }
 }
@@ -569,7 +669,15 @@ private fun PermissionRationaleCard(showSettingsHint: Boolean, onRequest: () -> 
         Text(
             "Sharing Plus needs this permission to discover nearby devices over Wi-Fi Direct.",
             fontSize = 13.sp,
-            color = SleekOnSurfaceVariant
+            color = SleekOnSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Bluetooth lets Sharing Plus find nearby devices instantly instead of waiting on Wi-Fi scanning.",
+            fontSize = 13.sp,
+            color = SleekOnSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(

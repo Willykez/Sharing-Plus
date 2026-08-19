@@ -480,17 +480,23 @@ private class MorphComposeShape(
 
 
 
+/**
+ * [durationMillis] lets callers tier multiple simultaneous rings by search speed - e.g. a
+ * short, fast pulse for BLE sensing (near-instant) layered with the slower, wider pulse this
+ * already used for Wi-Fi Direct discovery, so two different radii/speeds read as "two radios
+ * searching" without any text needed.
+ */
 @Composable
-fun RadarPulseRing(sizeDp: Int, delayMillis: Int = 0) {
+fun RadarPulseRing(sizeDp: Int, delayMillis: Int = 0, durationMillis: Int = 2800) {
     val transition = rememberInfiniteTransition(label = "radar")
     val scale = transition.animateFloat(
         initialValue = 0.8f, targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(tween(2800, delayMillis, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(durationMillis, delayMillis, easing = FastOutSlowInEasing), RepeatMode.Restart),
         label = "scale"
     ).value
     val alpha = transition.animateFloat(
         initialValue = 0.6f, targetValue = 0f,
-        animationSpec = infiniteRepeatable(tween(2800, delayMillis, easing = FastOutSlowInEasing), RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(durationMillis, delayMillis, easing = FastOutSlowInEasing), RepeatMode.Restart),
         label = "alpha"
     ).value
 

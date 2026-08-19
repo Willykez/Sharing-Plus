@@ -505,6 +505,7 @@ private fun ConnectionStatusBanner(
     val label = when (linkState) {
         com.willyshare.willykez.ui.LinkState.TRANSFERRING -> "Transferring with ${peerName ?: "a nearby device"}"
         com.willyshare.willykez.ui.LinkState.CONNECTED -> "Connected to ${peerName ?: "a nearby device"}"
+        com.willyshare.willykez.ui.LinkState.RESOLVING -> "Found a nearby device \u2013 identifying\u2026"
         com.willyshare.willykez.ui.LinkState.IDLE -> ""
     }
     val dotColor = if (linkState == com.willyshare.willykez.ui.LinkState.TRANSFERRING) SleekPrimary else Color(0xFF2E7D32)

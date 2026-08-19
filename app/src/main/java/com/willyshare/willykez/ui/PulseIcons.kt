@@ -4,6 +4,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
@@ -49,6 +52,9 @@ object PulseIcons {
     val Video: ImageVector = Icons.Filled.Movie
     val Audio: ImageVector = Icons.Filled.MusicNote
     val Brand: ImageVector = Icons.Filled.Bolt
+    val Bluetooth: ImageVector = Icons.Filled.Bluetooth
+    val BluetoothSearching: ImageVector = Icons.Filled.BluetoothSearching
+    val BluetoothConnected: ImageVector = Icons.Filled.BluetoothConnected
 
     /** File-category icon, mirrors the switch that used to pick an emoji string. */
     fun forCategory(category: String): ImageVector =

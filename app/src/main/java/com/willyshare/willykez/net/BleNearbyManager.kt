@@ -49,8 +49,15 @@ data class BleNearbyDevice(
     val name: String,
     val wifiP2pAddress: String?,
     val lastSeenAtMs: Long,
-    val rssi: Int
+    val rssi: Int,
+    /** False while the peer is already mid-transfer with someone else (or not actively
+     *  listening) - lets the UI grey out / deprioritize a device that would just queue behind
+     *  another transfer instead of accepting one right away. */
+    val readyToReceive: Boolean = true
 )
+
+/** What this device hands out over GATT about itself - see [BleNearbyManager.localInfoProvider]. */
+data class LocalBleInfo(val name: String, val wifiP2pAddress: String?, val readyToReceive: Boolean)
 
 /**
  * BLE layer for *discovery only* - mirrors how Quick Share/Nearby Share actually bootstraps:
@@ -81,6 +88,13 @@ class BleNearbyManager(private val context: Context) {
         private const val STALE_MS = 15_000L
         private const val PRUNE_INTERVAL_MS = 3_000L
 
+        /** How long a resolved address + readiness flag is trusted before the next
+         *  advertisement sighting triggers a fresh GATT read - readiness in particular
+         *  (busy/free) changes far more often than the address does, so this needs to be
+         *  short enough that the UI doesn't show a stale "ready" badge for a peer that
+         *  started a transfer with someone else moments ago. */
+        private const val READY_REFRESH_MS = 8_000L
+
         /** Re-attempted at most this many times per BLE address per advertisement sighting,
          *  so one flaky/unresponsive peer can't spin the scanner in a tight connect loop. */
         private const val MAX_GATT_ATTEMPTS_PER_SIGHTING = 2
@@ -106,10 +120,12 @@ class BleNearbyManager(private val context: Context) {
 
     private val deviceMap = ConcurrentHashMap<String, BleNearbyDevice>()
     private val gattAttempts = ConcurrentHashMap<String, Int>()
+    private val gattResolvedAt = ConcurrentHashMap<String, Long>()
 
-    /** Supplies our own current name + Wi-Fi Direct address at GATT-read time (not cached at
-     *  construction) since the Wi-Fi Direct address can change whenever a group re-forms. */
-    var localInfoProvider: () -> Pair<String, String?> = { android.os.Build.MODEL to null }
+    /** Supplies our own current name, Wi-Fi Direct address, and whether we're free to accept
+     *  a transfer right now, at GATT-read time (not cached at construction) since all three
+     *  can change - address on group re-formation, readiness whenever a transfer starts. */
+    var localInfoProvider: () -> LocalBleInfo = { LocalBleInfo(android.os.Build.MODEL ?: "Device", null, true) }
 
     val isSupported: Boolean
         get() = adapter != null &&
@@ -186,8 +202,8 @@ class BleNearbyManager(private val context: Context) {
                     characteristic: BluetoothGattCharacteristic
                 ) {
                     if (characteristic.uuid != CHARACTERISTIC_UUID) return
-                    val (name, wifiMac) = localInfoProvider()
-                    val payload = encodePayload(name, wifiMac)
+                    val info = localInfoProvider()
+                    val payload = encodePayload(info.name, info.wifiP2pAddress, info.readyToReceive)
                     val slice = if (offset < payload.size) payload.copyOfRange(offset, payload.size) else ByteArray(0)
                     try {
                         gattServer?.sendResponse(device, requestId, android.bluetooth.BluetoothGatt.GATT_SUCCESS, offset, slice)
@@ -274,16 +290,19 @@ class BleNearbyManager(private val context: Context) {
     private fun onSighted(result: ScanResult) {
         val address = try { result.device.address } catch (_: SecurityException) { null } ?: return
         val existing = deviceMap[address]
+        val now = System.currentTimeMillis()
         // Refresh last-seen immediately from the advertisement alone, even before a GATT
         // read completes - so a device already resolved on a previous sighting doesn't
         // get pruned while we're mid-reconnect for a refreshed payload.
         if (existing != null) {
-            deviceMap[address] = existing.copy(lastSeenAtMs = System.currentTimeMillis(), rssi = result.rssi)
+            deviceMap[address] = existing.copy(lastSeenAtMs = now, rssi = result.rssi)
         }
         val attempts = gattAttempts.getOrDefault(address, 0)
-        if (existing?.wifiP2pAddress != null && attempts == 0) {
-            // Already fully resolved recently; just keep the last-seen bump above, no need
-            // to reconnect and re-read every single advertisement tick.
+        val lastResolved = gattResolvedAt.getOrDefault(address, 0L)
+        if (existing?.wifiP2pAddress != null && attempts == 0 && now - lastResolved < READY_REFRESH_MS) {
+            // Resolved recently enough that the address is still good and readyToReceive is
+            // still a fair reflection of the peer's current state; just keep the last-seen
+            // bump above rather than reconnecting on every single advertisement tick.
             _nearbyDevices.value = deviceMap.values.sortedByDescending { it.lastSeenAtMs }
             return
         }
@@ -317,15 +336,17 @@ class BleNearbyManager(private val context: Context) {
                     status: Int
                 ) {
                     if (status == BluetoothGatt.GATT_SUCCESS) {
-                        decodePayload(characteristic.value)?.let { (name, wifiMac) ->
+                        decodePayload(characteristic.value)?.let { decoded ->
                             deviceMap[address] = BleNearbyDevice(
                                 bleAddress = address,
-                                name = name,
-                                wifiP2pAddress = wifiMac,
+                                name = decoded.name,
+                                wifiP2pAddress = decoded.wifiP2pAddress,
                                 lastSeenAtMs = System.currentTimeMillis(),
-                                rssi = result.rssi
+                                rssi = result.rssi,
+                                readyToReceive = decoded.readyToReceive
                             )
                             gattAttempts[address] = 0
+                            gattResolvedAt[address] = System.currentTimeMillis()
                             _nearbyDevices.value = deviceMap.values.sortedByDescending { it.lastSeenAtMs }
                         }
                     }
@@ -336,19 +357,22 @@ class BleNearbyManager(private val context: Context) {
         }
     }
 
-    private fun encodePayload(name: String, wifiMac: String?): ByteArray {
+    private fun encodePayload(name: String, wifiMac: String?, ready: Boolean): ByteArray {
         val safeName = name.take(40).replace("\"", "'")
-        val json = "{\"n\":\"$safeName\",\"m\":\"${wifiMac ?: ""}\"}"
+        val json = "{\"n\":\"$safeName\",\"m\":\"${wifiMac ?: ""}\",\"r\":${if (ready) 1 else 0}}"
         return json.toByteArray(StandardCharsets.UTF_8)
     }
 
-    private fun decodePayload(bytes: ByteArray?): Pair<String, String?>? {
+    private fun decodePayload(bytes: ByteArray?): LocalBleInfo? {
         if (bytes == null || bytes.isEmpty()) return null
         return try {
             val json = String(bytes, StandardCharsets.UTF_8)
             val name = Regex("\"n\":\"(.*?)\"").find(json)?.groupValues?.get(1)?.takeIf { it.isNotBlank() } ?: return null
             val mac = Regex("\"m\":\"(.*?)\"").find(json)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
-            name to mac
+            // Missing/unparseable "r" defaults to ready=true rather than silently hiding an
+            // older peer build that doesn't send the field yet.
+            val ready = Regex("\"r\":(\\d)").find(json)?.groupValues?.get(1) != "0"
+            LocalBleInfo(name, mac, ready)
         } catch (_: Exception) {
             null
         }
@@ -370,6 +394,7 @@ class BleNearbyManager(private val context: Context) {
         advertiser = null
         deviceMap.clear()
         gattAttempts.clear()
+        gattResolvedAt.clear()
         _nearbyDevices.value = emptyList()
         _isActive.value = false
     }
