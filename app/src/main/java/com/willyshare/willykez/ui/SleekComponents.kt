@@ -512,18 +512,15 @@ fun RadarPulseRing(sizeDp: Int, delayMillis: Int = 0, durationMillis: Int = 2800
  * The app's background signature - deliberately NOT the soft violet/cyan blur-blob look this
  * screen used to have (that was hardcoded to VioletAccent/CyanBright and ignored whichever of
  * the 8 curated palettes - or Material You, or a custom color - the person actually picked in
- * Settings). This draws a fine dot-grid mesh plus a diagonal scan-line sweep, entirely from the
+ * Settings). This draws a fine dot-grid mesh with two soft corner glows, entirely from the
  * live SleekPrimary/SleekSecondary tokens, so it's correct under every theme AND reads as a
- * distinct "radar/mesh" identity rather than ambient glow.
+ * distinct "radar/mesh" identity rather than ambient glow. (A diagonal scan-line sweep used to
+ * animate across this on every screen; removed per feedback that it read as a distracting bar
+ * crossing the whole screen rather than a subtle background texture.)
  */
 @Composable
 fun AuroraBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val transition = rememberInfiniteTransition(label = "mesh_field")
-    val sweep by transition.animateFloat(
-        initialValue = -0.3f, targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(tween(6500, easing = FastOutSlowInEasing), RepeatMode.Restart),
-        label = "sweep"
-    )
     val pulse by transition.animateFloat(
         initialValue = 0.6f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(3200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
@@ -562,15 +559,6 @@ fun AuroraBackground(modifier: Modifier = Modifier, content: @Composable BoxScop
                 brush = Brush.radialGradient(listOf(secondary.copy(alpha = 0.18f), Color.Transparent), radius = w * 0.5f),
                 radius = w * 0.5f,
                 center = Offset(w * 0.96f, h * 0.92f)
-            )
-
-            // Diagonal scan sweep - a deliberate "radar pass" motion instead of ambient drift.
-            val sweepX = w * sweep
-            drawLine(
-                brush = Brush.linearGradient(listOf(Color.Transparent, primary.copy(alpha = 0.30f), Color.Transparent)),
-                start = Offset(sweepX, -h * 0.2f),
-                end = Offset(sweepX - w * 0.35f, h * 1.2f),
-                strokeWidth = w * 0.16f
             )
         }
         content()
