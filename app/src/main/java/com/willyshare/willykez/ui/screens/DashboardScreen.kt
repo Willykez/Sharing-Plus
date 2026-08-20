@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -83,6 +87,7 @@ fun DashboardScreen(
     val totalBytes = transfers.sumOf { it.sizeBytes }
     val sentCount = transfers.count { it.isSend }
     val receivedCount = transfers.count { !it.isSend }
+    var previewTransfer by remember { mutableStateOf<com.willyshare.willykez.data.TransferEntity?>(null) }
 
     Scaffold(
         bottomBar = {
@@ -231,7 +236,8 @@ fun DashboardScreen(
                                 GroupedListItem(position = groupPositionFor(index, shown.size)) {
                                     TransferItemRow(
                                         transfer = transfer,
-                                        onDelete = { viewModel.deleteTransfer(transfer) }
+                                        onDelete = { viewModel.deleteTransfer(transfer) },
+                                        onPreview = { previewTransfer = transfer }
                                     )
                                 }
                             }
@@ -243,6 +249,13 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
+        }
+
+        previewTransfer?.let { transfer ->
+            com.willyshare.willykez.ui.FilePreviewDialog(
+                file = com.willyshare.willykez.ui.PreviewableFile.from(transfer),
+                onDismiss = { previewTransfer = null }
+            )
         }
     }
 }
@@ -416,9 +429,9 @@ private fun DashboardSection(
 @Composable
 fun TransferItemRow(
     transfer: TransferEntity,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPreview: () -> Unit
 ) {
-    val categoryIcon = com.willyshare.willykez.ui.PulseIcons.forCategory(transfer.category)
     val iconBg = when (transfer.category) {
         "VIDEO" -> CyanBright.copy(alpha = 0.2f)
         "PHOTO" -> PinkThumb
@@ -432,12 +445,13 @@ fun TransferItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (canOpen) {
-                    Modifier.clickable {
-                        com.willyshare.willykez.util.FileOpener.open(context, transfer.savedPath!!, transfer.fileName)
-                    }
-                } else Modifier
+            .combinedClickable(
+                onClick = {
+                    if (canOpen) com.willyshare.willykez.util.FileOpener.open(context, transfer.savedPath!!, transfer.fileName)
+                },
+                // Long-press previews regardless of canOpen - a sent file can still preview
+                // from its sourceUri even though tapping it here doesn't "open" anything.
+                onLongClick = onPreview
             )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -454,7 +468,11 @@ fun TransferItemRow(
                     .background(iconBg),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(categoryIcon, contentDescription = null, tint = SleekOnSurface, modifier = Modifier.size(22.dp))
+                com.willyshare.willykez.ui.TransferThumbnail(
+                    transfer = transfer,
+                    modifier = Modifier.fillMaxSize(),
+                    iconSize = 22.dp
+                )
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column {

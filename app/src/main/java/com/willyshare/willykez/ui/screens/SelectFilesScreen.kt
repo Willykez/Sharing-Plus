@@ -21,6 +21,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,6 +142,7 @@ fun SelectFilesScreen(
     var sortOption by remember { mutableStateOf(SortOption.NAME) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var previewFile by remember { mutableStateOf<FileItemEntity?>(null) }
 
     val selectedCount = files.count { it.isSelected }
     val totalBytes = files.filter { it.isSelected }.sumOf { it.sizeBytes }
@@ -387,7 +389,8 @@ fun SelectFilesScreen(
                         items(filteredFiles, key = { it.id }) { file ->
                             FileGridCardItem(
                                 file = file,
-                                onToggle = { viewModel.toggleFileSelection(file.id, file.isSelected) }
+                                onToggle = { viewModel.toggleFileSelection(file.id, file.isSelected) },
+                                onLongPress = { previewFile = file }
                             )
                         }
                     }
@@ -402,7 +405,8 @@ fun SelectFilesScreen(
                         items(filteredFiles, key = { it.id }) { file ->
                             FileListRowItem(
                                 file = file,
-                                onToggle = { viewModel.toggleFileSelection(file.id, file.isSelected) }
+                                onToggle = { viewModel.toggleFileSelection(file.id, file.isSelected) },
+                                onLongPress = { previewFile = file }
                             )
                         }
                     }
@@ -500,6 +504,13 @@ fun SelectFilesScreen(
                         )
                     }
                 }
+            }
+
+            previewFile?.let { file ->
+                com.willyshare.willykez.ui.FilePreviewDialog(
+                    file = com.willyshare.willykez.ui.PreviewableFile.from(file),
+                    onDismiss = { previewFile = null }
+                )
             }
         }
     }
@@ -662,7 +673,8 @@ private fun drawableToBitmap(drawable: Drawable, size: Int = 128): Bitmap {
 @Composable
 fun FileListRowItem(
     file: FileItemEntity,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -674,7 +686,7 @@ fun FileListRowItem(
                 color = if (file.isSelected) SleekPrimary else SleekOutline.copy(alpha = 0.35f),
                 shape = RoundedCornerShape(14.dp)
             )
-            .clickable { onToggle() }
+            .combinedClickable(onClick = onToggle, onLongClick = onLongPress)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -727,7 +739,8 @@ fun FileListRowItem(
 @Composable
 fun FileGridCardItem(
     file: FileItemEntity,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     val scale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (file.isSelected) 0.94f else 1f,
@@ -745,7 +758,7 @@ fun FileGridCardItem(
                 color = if (file.isSelected) SleekPrimary else SleekOutline.copy(alpha = 0.35f),
                 shape = RoundedCornerShape(16.dp)
             )
-            .clickable { onToggle() }
+            .combinedClickable(onClick = onToggle, onLongClick = onLongPress)
             .padding(8.dp)
     ) {
         Column(

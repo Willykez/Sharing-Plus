@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -100,6 +101,7 @@ fun BrowseFilesScreen(
     val selectedFiles by viewModel.browseSelectedFiles.collectAsState()
     val selectedFolders by viewModel.browseSelectedFolders.collectAsState()
     val summary by viewModel.browseSelectionSummary.collectAsState()
+    var previewNode by remember { mutableStateOf<LocalFileNode?>(null) }
 
     // Folder-up takes priority over leaving the screen while we're a level deep.
     BackHandler(enabled = pathStack.isNotEmpty()) { viewModel.browseUp() }
@@ -170,7 +172,8 @@ fun BrowseFilesScreen(
                                 onCheckToggle = {
                                     if (node.isDirectory) viewModel.toggleBrowseFolder(node.path) else viewModel.toggleBrowseFile(node.path)
                                 },
-                                onOpen = { if (node.isDirectory) viewModel.browseInto(node) }
+                                onOpen = { if (node.isDirectory) viewModel.browseInto(node) },
+                                onLongPress = { previewNode = node }
                             )
                         }
                         item { Spacer(modifier = Modifier.height(90.dp)) }
@@ -178,6 +181,12 @@ fun BrowseFilesScreen(
                 }
             }
 
+            previewNode?.let { node ->
+                com.willyshare.willykez.ui.FilePreviewDialog(
+                    file = com.willyshare.willykez.ui.PreviewableFile.from(node),
+                    onDismiss = { previewNode = null }
+                )
+            }
             if (summary.first > 0) {
                 Column(
                     modifier = Modifier
@@ -292,7 +301,8 @@ private fun BrowseEntryRow(
     node: LocalFileNode,
     isChecked: Boolean,
     onCheckToggle: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -304,7 +314,10 @@ private fun BrowseEntryRow(
                 color = if (isChecked) SleekPrimary else SleekOutline.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(14.dp)
             )
-            .clickable { if (node.isDirectory) onOpen() else onCheckToggle() }
+            .combinedClickable(
+                onClick = { if (node.isDirectory) onOpen() else onCheckToggle() },
+                onLongClick = { if (!node.isDirectory) onLongPress() }
+            )
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

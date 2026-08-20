@@ -775,6 +775,21 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         return Triple(selected, fromBrowser, fromShareIntent)
     }
 
+    /** [FileItemEntity.category] uses plural on-device-browser labels ("Photos", "Videos",
+     *  "Documents", "Apps", "Audio"); [TransferEntity.category] uses the singular vocabulary
+     *  [categoryForFile] also produces ("PHOTO", "VIDEO", "DOC", "APP", "AUDIO", "ARCHIVE") -
+     *  a plain `.uppercase()` only happens to matches for Audio, so every sent Photo/Video/
+     *  Document/App was being logged under the wrong category and silently missing both its
+     *  icon and (now) its thumbnail in History. */
+    private fun mapPickerCategory(category: String): String = when (category) {
+        "Photos" -> "PHOTO"
+        "Videos" -> "VIDEO"
+        "Documents" -> "DOC"
+        "Apps" -> "APP"
+        "Audio" -> "AUDIO"
+        else -> category.uppercase()
+    }
+
     /** Shared by both send paths: writes history rows for a completed send and clears the cart. */
     private suspend fun recordSentHistory(selected: List<FileItemEntity>, fromBrowser: List<SendableFile>, fromShareIntent: List<SendableFile>) {
         selected.forEach { f ->
@@ -782,12 +797,13 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                 TransferEntity(
                     id = UUID.randomUUID().toString(),
                     fileName = f.name,
-                    category = f.category.uppercase(),
+                    category = mapPickerCategory(f.category),
                     sizeBytes = f.sizeBytes,
                     timestamp = System.currentTimeMillis(),
                     deviceName = targetName.value ?: "Nearby device",
                     isSend = true,
-                    status = "COMPLETED"
+                    status = "COMPLETED",
+                    sourceUri = f.uri
                 )
             )
         }
@@ -801,7 +817,8 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
                     timestamp = System.currentTimeMillis(),
                     deviceName = targetName.value ?: "Nearby device",
                     isSend = true,
-                    status = "COMPLETED"
+                    status = "COMPLETED",
+                    sourceUri = f.uri.toString()
                 )
             )
         }
