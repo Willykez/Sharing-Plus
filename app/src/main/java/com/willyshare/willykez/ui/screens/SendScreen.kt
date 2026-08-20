@@ -94,6 +94,7 @@ fun SendScreen(
     // device shows up in `peers` too, it's dropped from here so it isn't listed twice.
     val bleDevices by viewModel.nearbyBleDevices.collectAsState()
     val bleActive by viewModel.bleNearby.isActive.collectAsState()
+    val bleFastDiscoveryEnabled by viewModel.bleFastDiscoveryEnabled.collectAsState()
     val wifiDirectAddresses = remember(peers) { peers.map { it.deviceAddress }.toSet() }
     val bleOnlyDevices = remember(bleDevices, wifiDirectAddresses) {
         bleDevices.filter { it.wifiP2pAddress != null && it.wifiP2pAddress !in wifiDirectAddresses }
@@ -113,6 +114,7 @@ fun SendScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var connectingTo by remember { mutableStateOf<String?>(null) }
     var wifiEnabled by remember { mutableStateOf(WifiEnableHelper.isWifiEnabled(context)) }
+    var bluetoothEnabled by remember { mutableStateOf(com.willyshare.willykez.util.BluetoothEnableHelper.isBluetoothEnabled(context)) }
     var showQrSheet by remember { mutableStateOf(false) }
     // Guards the auto-reconnect effect below so it only ever fires once per screen visit -
     // without this, if the user manually backs out of an auto-started connection, the exact
@@ -130,16 +132,29 @@ fun SendScreen(
         viewModel.connectToPeer(trustedPeer) { msg -> statusMessage = msg }
     }
 
-    // Re-check whenever the screen resumes (e.g. coming back from the Wi-Fi panel/Settings).
+    // Re-check whenever the screen resumes (e.g. coming back from the Wi-Fi panel/Settings,
+    // or dismissing the Bluetooth enable dialog).
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 wifiEnabled = WifiEnableHelper.isWifiEnabled(context)
+                bluetoothEnabled = com.willyshare.willykez.util.BluetoothEnableHelper.isBluetoothEnabled(context)
+                if (bluetoothEnabled) viewModel.refreshBle()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // ACTION_REQUEST_ENABLE's system dialog turns Bluetooth on directly - the result callback
+    // just needs to refresh the banner/BLE state, since the adapter is already on by the time
+    // this fires (or the user declined and it's still off).
+    val bluetoothEnableLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) {
+        bluetoothEnabled = com.willyshare.willykez.util.BluetoothEnableHelper.isBluetoothEnabled(context)
+        if (bluetoothEnabled) viewModel.refreshBle()
     }
 
     LaunchedEffect(Unit) {
@@ -223,6 +238,16 @@ fun SendScreen(
                     if (!wifiEnabled) {
                         WifiOffBanner(
                             onEnable = { context.startActivity(WifiEnableHelper.requestEnable(context)) }
+                        )
+                    }
+                    // Shown only once Wi-Fi is already on - Wi-Fi Direct is the radio that's
+                    // actually required for a transfer, so that banner takes priority; showing
+                    // both stacked when neither is on would bury the more important one. Also
+                    // hidden entirely if the person turned off "Fast discovery (Bluetooth)" in
+                    // Settings - no point prompting to enable a radio the app won't even use.
+                    if (wifiEnabled && bleFastDiscoveryEnabled && !bluetoothEnabled) {
+                        BluetoothOffBanner(
+                            onEnable = { bluetoothEnableLauncher.launch(com.willyshare.willykez.util.BluetoothEnableHelper.requestEnableIntent()) }
                         )
                     }
 
@@ -634,6 +659,38 @@ private fun WifiOffBanner(onEnable: () -> Unit) {
             Text("Wi-Fi is off", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
             Text(
                 "Wi-Fi Direct needs Wi-Fi turned on to find nearby devices.",
+                fontSize = 11.sp,
+                color = SleekOnSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Button(
+            onClick = onEnable,
+            shape = RoundedCornerShape(999.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SleekPrimary)
+        ) {
+            Text("Enable", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun BluetoothOffBanner(onEnable: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(SleekCard)
+            .border(1.dp, SleekOutline.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Bluetooth is off", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SleekOnSurface)
+            Text(
+                "Turn it on to spot nearby devices instantly, before Wi-Fi Direct catches up.",
                 fontSize = 11.sp,
                 color = SleekOnSurfaceVariant
             )

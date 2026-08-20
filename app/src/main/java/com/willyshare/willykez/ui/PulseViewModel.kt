@@ -336,6 +336,11 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
         // background instead of only listening while a specific screen is on top.
         startReceiving()
         refreshMyQrPayload()
+        // Prefetched here rather than waiting for the Select Files screen to open, so the
+        // picker already has data (or is at least already mid-scan) by the time someone
+        // actually taps into it - see loadDeviceFiles()'s own doc comment for why this is
+        // staged into a fast part and a slow (Apps) part rather than one blocking call.
+        prefetchDeviceFilesIfPermitted()
         // Reactive rather than a one-shot call at init{}: the persisted preference loads
         // asynchronously from DataStore, and this also handles the user flipping the
         // Settings toggle mid-session without needing a separate observer there too.
@@ -414,14 +419,66 @@ class PulseViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- Device file browsing (real MediaStore, no seeded data) ----------
 
-    fun loadDeviceFiles() {
+    /** Set once the fast categories have been loaded at least once this process - guards
+     *  [loadDeviceFiles] so revisiting the picker doesn't silently repeat the whole scan from
+     *  scratch every time; call with force=true (e.g. pull-to-refresh) to bypass this. */
+    private var hasLoadedDeviceFiles = false
+    val isLoadingApps = MutableStateFlow(false)
+
+    /**
+     * Loads device files in two stages instead of one big blocking scan, because profiling
+     * showed the "Apps" category is disproportionately expensive - it walks every stray .apk
+     * on every storage volume and parses each one's manifest via
+     * [android.content.pm.PackageManager.getPackageArchiveInfo], which can take real seconds
+     * on a device with more than a handful of loose APKs sitting in Downloads/chat-app media
+     * folders. Gating Photos/Videos/Audio/Documents behind that was the main reason the
+     * picker felt slow to open even though those four are each a single fast MediaStore query.
+     *
+     * Stage 1 (fast): Photos + Videos + Audio + Documents - clears and replaces the table, so
+     * [isLoadingFiles] flips off and the grid renders as soon as these four are back.
+     * Stage 2 (slow): Apps - appended afterward (REPLACE conflict strategy means this can't
+     * collide with stage 1's rows, which use different id prefixes) without blocking the UI
+     * the person is actually looking at.
+     */
+    fun loadDeviceFiles(force: Boolean = false) {
+        if (hasLoadedDeviceFiles && !force) return
+        hasLoadedDeviceFiles = true
         viewModelScope.launch {
             isLoadingFiles.value = true
-            val files = withContext(Dispatchers.IO) { DeviceFiles.queryAll(appContext) }
+            val fastFiles = withContext(Dispatchers.IO) {
+                DeviceFiles.queryPhotos(appContext) +
+                    DeviceFiles.queryVideos(appContext) +
+                    DeviceFiles.queryAudio(appContext) +
+                    DeviceFiles.queryDocuments(appContext)
+            }
             dao.clearAllFiles()
-            if (files.isNotEmpty()) dao.insertAllFiles(files)
+            if (fastFiles.isNotEmpty()) dao.insertAllFiles(fastFiles)
             isLoadingFiles.value = false
+
+            isLoadingApps.value = true
+            val apps = withContext(Dispatchers.IO) { DeviceFiles.queryApps(appContext) }
+            if (apps.isNotEmpty()) dao.insertAllFiles(apps)
+            isLoadingApps.value = false
         }
+    }
+
+    /** Kicked off once at process start (see init{}) so the picker already has data by the
+     *  time the person opens it, rather than starting the scan only once they get there.
+     *  Only runs if media permissions are already granted - a first-ever launch with no
+     *  permissions yet still falls back to the picker's own load-on-permission-grant. */
+    private fun prefetchDeviceFilesIfPermitted() {
+        val hasMediaAccess = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            listOf(
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.READ_MEDIA_AUDIO
+            ).any {
+                androidx.core.content.ContextCompat.checkSelfPermission(appContext, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+        } else {
+            androidx.core.content.ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (hasMediaAccess) loadDeviceFiles()
     }
 
     fun toggleFileSelection(fileId: String, currentSelected: Boolean) {

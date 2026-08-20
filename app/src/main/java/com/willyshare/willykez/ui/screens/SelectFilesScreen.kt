@@ -107,6 +107,7 @@ fun SelectFilesScreen(
     val files by viewModel.allFiles.collectAsState()
     val currentTab by viewModel.selectedCategoryTab.collectAsState()
     val isLoading by viewModel.isLoadingFiles.collectAsState()
+    val isLoadingApps by viewModel.isLoadingApps.collectAsState()
     val targetName by viewModel.targetName.collectAsState()
     val targetIp by viewModel.targetIp.collectAsState()
     val goBack: () -> Unit = onGoBack ?: { onNavigate("dashboard") }
@@ -291,6 +292,27 @@ fun SelectFilesScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Browse folders", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SleekOnSurfaceVariant)
                         }
+                    }
+                }
+
+                // Photos/Videos/Audio/Documents load fast and are already visible by this
+                // point; Apps take longer (parsing loose .apk manifests) and finish in the
+                // background afterward - this just says so, rather than the Apps tab looking
+                // broken/empty for a few extra seconds with no explanation.
+                if (isLoadingApps && (currentTab.equals("Apps", true) || currentTab.equals("All", true))) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = SleekOnSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Still indexing installed apps\u2026", fontSize = 11.sp, color = SleekOnSurfaceVariant)
                     }
                 }
 
